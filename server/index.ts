@@ -9,6 +9,14 @@ import geminiRouter from "./routes/gemini";
 import { handlePdfProcess } from "./routes/pdf-process";
 import { handleFileUpload, getUploadedFiles, handleProcessDocuments } from "./routes/file-upload";
 import { handleWebSearch, handleEnhancedSearch } from "./routes/web-search";
+import { 
+  processDocument, 
+  searchDocuments, 
+  getDocumentStats, 
+  getMemoryStats, 
+  clearDocument, 
+  batchProcessDocuments 
+} from "./routes/document-processing";
 
 import { initializeDatabase } from "./database";
 
@@ -45,9 +53,17 @@ export function createServer() {
   app.post("/api/web-search", handleWebSearch);
   app.post("/api/enhanced-search", handleEnhancedSearch);
 
+  // Backend document processing routes
+  app.post("/api/documents/process", processDocument);
+  app.post("/api/documents/search", searchDocuments);
+  app.get("/api/documents/:documentId/stats", getDocumentStats);
+  app.get("/api/documents/memory-stats", getMemoryStats);
+  app.delete("/api/documents/:documentId", clearDocument);
+  app.post("/api/documents/batch-process", batchProcessDocuments);
+
   // Serve static files in production only
   if (process.env.NODE_ENV === 'production') {
-    const distPath = path.join(__dirname, '../dist/spa');
+    const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../dist/spa');
     app.use(express.static(distPath));
     
     // Catch-all route for SPA in production

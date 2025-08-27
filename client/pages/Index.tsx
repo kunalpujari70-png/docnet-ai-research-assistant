@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService, ChatRequest, ChatResponse } from '../services/api';
 import { documentProcessor } from '../services/documentProcessor';
 import { enhancedDocumentProcessor } from '../services/enhancedDocumentProcessor';
+import { backendDocumentService } from '../services/backendDocumentService';
 import Navigation from '../components/Navigation';
 import './Index.css';
 
@@ -473,43 +474,62 @@ export default function Index() {
         content: msg.content
       }));
 
-      // Use enhanced document processing for large documents with Chrome optimizations
+      // Use backend document processing to prevent frontend unresponsiveness
       let relevantDocuments = documentContext;
       
       if (documentContext.length > 0) {
         setStateOptimized(setLoadingStage, 'Analyzing documents...');
         
         try {
-          // Check if we have large documents that need enhanced processing
-          const hasLargeDocuments = documentContext.some(doc => 
-            doc.content && doc.content.length > 100000 // 100KB threshold
-          );
+          // Check if backend service is available
+          const isBackendAvailable = await backendDocumentService.isBackendAvailable();
           
-          if (hasLargeDocuments) {
-            setStateOptimized(setLoadingStage, 'Processing large documents with enhanced analysis...');
+          if (isBackendAvailable) {
+            setStateOptimized(setLoadingStage, 'Using backend document processing...');
             
-            // Use enhanced processor for large documents with Chrome optimizations
-            relevantDocuments = await enhancedDocumentProcessor.processDocumentsEnhanced(
-              documentContext,
+            // Use backend processing for all documents
+            relevantDocuments = await backendDocumentService.searchDocumentsWithFallback(
               inputValue,
-              (progress) => {
-                setStateOptimized(setProcessingProgress, progress);
-                setStateOptimized(setLoadingStage, `Enhanced document analysis... ${progress}%`);
-              }
+              documentContext,
+              documentContext.map(doc => doc.name) // Use document names as IDs
             );
+            
+            setStateOptimized(setLoadingStage, 'Backend processing completed');
           } else {
-            // Use standard processor for smaller documents
-            relevantDocuments = await documentProcessor.processDocuments(
-              documentContext,
-              inputValue,
-              (progress) => {
-                setStateOptimized(setProcessingProgress, progress);
-                setStateOptimized(setLoadingStage, `Analyzing documents... ${progress}%`);
-              }
+            // Fallback to frontend processing if backend is not available
+            setStateOptimized(setLoadingStage, 'Backend unavailable, using frontend processing...');
+            
+            // Check if we have large documents that need enhanced processing
+            const hasLargeDocuments = documentContext.some(doc => 
+              doc.content && doc.content.length > 100000 // 100KB threshold
             );
+            
+            if (hasLargeDocuments) {
+              setStateOptimized(setLoadingStage, 'Processing large documents with enhanced analysis...');
+              
+              // Use enhanced processor for large documents with Chrome optimizations
+              relevantDocuments = await enhancedDocumentProcessor.processDocumentsEnhanced(
+                documentContext,
+                inputValue,
+                (progress) => {
+                  setStateOptimized(setProcessingProgress, progress);
+                  setStateOptimized(setLoadingStage, `Enhanced document analysis... ${progress}%`);
+                }
+              );
+            } else {
+              // Use standard processor for smaller documents
+              relevantDocuments = await documentProcessor.processDocuments(
+                documentContext,
+                inputValue,
+                (progress) => {
+                  setStateOptimized(setProcessingProgress, progress);
+                  setStateOptimized(setLoadingStage, `Analyzing documents... ${progress}%`);
+                }
+              );
+            }
           }
         } catch (error) {
-          console.warn('Enhanced processing failed, using fallback:', error);
+          console.warn('Document processing failed, using fallback:', error);
           // Reset workers if they failed
           enhancedDocumentProcessor.resetWorkers();
           // Fallback to original documents
@@ -725,7 +745,7 @@ export default function Index() {
     };
   }, []);
 
-  // Chrome-optimized message rendering
+  // Chrome-optimized message rendering with React.memo
   const renderMessage = useCallback((message: Message) => {
     if (message.isDeleted) return null;
 
@@ -857,6 +877,16 @@ export default function Index() {
     </div>
   ), [currentSessionId, selectChatSession, exportChatSession, deleteChatSession]);
 
+  // Memoized message list to prevent unnecessary re-renders
+  const memoizedMessages = useMemo(() => {
+    return messages.map(renderMessage);
+  }, [messages, renderMessage]);
+
+  // Memoized chat sessions to prevent unnecessary re-renders
+  const memoizedChatSessions = useMemo(() => {
+    return chatSessions.map(renderChatSession);
+  }, [chatSessions, renderChatSession]);
+
   // Chrome-optimized submit handler
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -932,7 +962,7 @@ export default function Index() {
           </div>
           
           <div className="chat-sessions">
-            {chatSessions.map(renderChatSession)}
+            {memoizedChatSessions}
           </div>
         </div>
         
@@ -998,7 +1028,7 @@ export default function Index() {
           </div>
           
           <div className="chat-messages">
-            {messages.map(renderMessage)}
+            {memoizedMessages}
             
             {isLoading && (
               <div className="loading-message">
