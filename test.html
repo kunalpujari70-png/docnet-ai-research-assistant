@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .test-box {
+            background: lightblue;
+            padding: 20px;
+            margin: 20px;
+            border: 2px solid blue;
+            border-radius: 8px;
+            max-width: 600px;
+        }
+        .test-button {
+            padding: 10px 20px;
+            background: green;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-box">
+        <h1>🧪 Direct File Test</h1>
+        <p>If you can see this, the file is loading correctly!</p>
+        <p style="color: red; font-weight: bold;">This is a completely separate HTML file.</p>
+        <button class="test-button" onclick="alert('File is working!')">
+            Click me!
+        </button>
+    </div>
+    
+    <script>
+        console.log('Direct test script loaded');
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded successfully');
+        });
+    </script>
+</body>
+</html>

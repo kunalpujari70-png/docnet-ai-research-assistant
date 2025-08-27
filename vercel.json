@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "dist/server/node-build.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "dist/spa/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "dist/server/node-build.mjs",
+      "headers": {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"
+      }
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/dist/spa/assets/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/spa/index.html"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

@@ -1,0 +1,37 @@
+HTTP/1.1 500 Internal Server Error
+Vary: Origin
+X-Powered-By: Express
+Access-Control-Allow-Origin: *
+Date: Tue, 19 Aug 2025 22:04:17 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Content-Length: 2100
+
+
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <title>Error</title>
+            <script type="module">
+              const error = {"message":"Expected property name or '}' in JSON at position 1 (line 1 column 2)","stack":"    at JSON.parse (\u003canonymous>)\n    at parse (C:\\Users\\Karmic\\Downloads\\vortex-space\\node_modules\\.pnpm\\body-parser@2.2.0\\node_modules\\body-parser\\lib\\types\\json.js:77:19)\n    at C:\\Users\\Karmic\\Downloads\\vortex-space\\node_modules\\.pnpm\\body-parser@2.2.0\\node_modules\\body-parser\\lib\\read.js:123:18\n    at AsyncResource.runInAsyncScope (node:async_hooks:214:14)\n    at invokeCallback (C:\\Users\\Karmic\\Downloads\\vortex-space\\node_modules\\.pnpm\\raw-body@3.0.0\\node_modules\\raw-body\\index.js:238:16)\n    at done (C:\\Users\\Karmic\\Downloads\\vortex-space\\node_modules\\.pnpm\\raw-body@3.0.0\\node_modules\\raw-body\\index.js:227:7)\n    at IncomingMessage.onEnd (C:\\Users\\Karmic\\Downloads\\vortex-space\\node_modules\\.pnpm\\raw-body@3.0.0\\node_modules\\raw-body\\index.js:287:7)\n    at IncomingMessage.emit (node:events:518:28)\n    at endReadableNT (node:internal/streams/readable:1698:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)","frame":""}
+              try {
+                const { ErrorOverlay } = await import("/@vite/client")
+                document.body.appendChild(new ErrorOverlay(error))
+              } catch {
+                const h = (tag, text) => {
+                  const el = document.createElement(tag)
+                  el.textContent = text
+                  return el
+                }
+                document.body.appendChild(h('h1', 'Internal Server Error'))
+                document.body.appendChild(h('h2', error.message))
+                document.body.appendChild(h('pre', error.stack))
+                document.body.appendChild(h('p', '(Error overlay failed to load)'))
+              }
+            </script>
+          </head>
+          <body>
+          </body>
+        </html>
+      
