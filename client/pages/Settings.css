@@ -295,6 +295,94 @@
   border-color: rgba(239, 68, 68, 0.5);
 }
 
+/* Disabled states */
+.action-btn:disabled,
+.action-btn.disabled,
+.theme-btn:disabled,
+.setting-select:disabled,
+.setting-input:disabled,
+.setting-checkbox:disabled,
+.setting-slider:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.action-btn:disabled:hover,
+.action-btn.disabled:hover,
+.theme-btn:disabled:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Ensure proper pointer events */
+.settings-section,
+.setting-group,
+.setting-label {
+  pointer-events: auto;
+}
+
+/* Prevent any CSS conflicts */
+.settings-page * {
+  box-sizing: border-box;
+}
+
+/* Ensure buttons are clickable */
+button {
+  cursor: pointer;
+  user-select: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Ensure form elements are interactive */
+input, select, textarea {
+  pointer-events: auto;
+}
+
+/* Fix for label clickability */
+label {
+  cursor: pointer;
+  user-select: none;
+}
+
+label:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Loading indicator */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top: 3px solid #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .about-content {
   color: #a0a0a0;
   line-height: 1.6;

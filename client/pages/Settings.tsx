@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Navigation from '../components/Navigation';
 import './Settings.css';
@@ -19,7 +19,7 @@ interface AISettings {
 }
 
 export default function Settings() {
-  const { theme, toggleTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   
   const [settings, setSettings] = useState({
     autoSave: true,
@@ -48,127 +48,165 @@ export default function Settings() {
     visible: false
   });
 
-  useEffect(() => {
-    // Load saved settings from localStorage
-    const savedSettings = localStorage.getItem('appSettings');
-    if (savedSettings) {
-      setSettings(JSON.parse(savedSettings));
-    }
+  const [isLoading, setIsLoading] = useState(false);
 
-    const savedAISettings = localStorage.getItem('aiSettings');
-    if (savedAISettings) {
-      setAiSettings(JSON.parse(savedAISettings));
+  // Load saved settings from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('appSettings');
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        setSettings(prev => ({ ...prev, ...parsedSettings }));
+      }
+
+      const savedAISettings = localStorage.getItem('aiSettings');
+      if (savedAISettings) {
+        const parsedAISettings = JSON.parse(savedAISettings);
+        setAiSettings(prev => ({ ...prev, ...parsedAISettings }));
+      }
+    } catch (error) {
+      console.error('Error loading settings from localStorage:', error);
+      showFeedback('Error loading saved settings', 'error');
     }
   }, []);
 
-  const showFeedback = (message: string, type: 'success' | 'error') => {
+  const showFeedback = useCallback((message: string, type: 'success' | 'error') => {
     setFeedback({ message, type, visible: true });
     setTimeout(() => {
       setFeedback(prev => ({ ...prev, visible: false }));
     }, 3000);
-  };
+  }, []);
 
-  const handleSettingChange = (key: string, value: any) => {
-    const newSettings = { ...settings, [key]: value };
-    setSettings(newSettings);
-    localStorage.setItem('appSettings', JSON.stringify(newSettings));
-    
-    // Show feedback based on setting type
-    switch (key) {
-      case 'autoSave':
-        showFeedback(`Auto-save ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
-      case 'notifications':
-        showFeedback(`Notifications ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
-      case 'language':
-        showFeedback(`Language changed to ${value}`, 'success');
-        break;
-      case 'fontSize':
-        showFeedback(`Font size changed to ${value}`, 'success');
-        break;
-      case 'compactMode':
-        showFeedback(`Compact mode ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
-      case 'showSources':
-        showFeedback(`Source display ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
-      case 'enableMessageEditing':
-        showFeedback(`Message editing ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
-      case 'enableChatExport':
-        showFeedback(`Chat export ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
-      case 'enableChatImport':
-        showFeedback(`Chat import ${value ? 'enabled' : 'disabled'}`, 'success');
-        break;
+  const handleSettingChange = useCallback((key: string, value: any) => {
+    try {
+      const newSettings = { ...settings, [key]: value };
+      setSettings(newSettings);
+      localStorage.setItem('appSettings', JSON.stringify(newSettings));
+      
+      // Show feedback based on setting type
+      switch (key) {
+        case 'autoSave':
+          showFeedback(`Auto-save ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+        case 'notifications':
+          showFeedback(`Notifications ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+        case 'language':
+          showFeedback(`Language changed to ${value}`, 'success');
+          break;
+        case 'fontSize':
+          showFeedback(`Font size changed to ${value}`, 'success');
+          break;
+        case 'compactMode':
+          showFeedback(`Compact mode ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+        case 'showSources':
+          showFeedback(`Source display ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+        case 'enableMessageEditing':
+          showFeedback(`Message editing ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+        case 'enableChatExport':
+          showFeedback(`Chat export ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+        case 'enableChatImport':
+          showFeedback(`Chat import ${value ? 'enabled' : 'disabled'}`, 'success');
+          break;
+      }
+    } catch (error) {
+      console.error('Error saving setting:', error);
+      showFeedback('Error saving setting', 'error');
     }
-  };
+  }, [settings, showFeedback]);
 
-  const handleAISettingChange = (key: string, value: any) => {
-    const newAISettings = { ...aiSettings, [key]: value };
-    setAiSettings(newAISettings);
-    localStorage.setItem('aiSettings', JSON.stringify(newAISettings));
-    
-    showFeedback(`AI setting updated: ${key}`, 'success');
-  };
+  const handleAISettingChange = useCallback((key: string, value: any) => {
+    try {
+      const newAISettings = { ...aiSettings, [key]: value };
+      setAiSettings(newAISettings);
+      localStorage.setItem('aiSettings', JSON.stringify(newAISettings));
+      
+      showFeedback(`AI setting updated: ${key}`, 'success');
+    } catch (error) {
+      console.error('Error saving AI setting:', error);
+      showFeedback('Error saving AI setting', 'error');
+    }
+  }, [aiSettings, showFeedback]);
 
-  const handleThemeChange = (newTheme: 'light' | 'dark') => {
-    setTheme(newTheme);
-    showFeedback(`Theme changed to ${newTheme} mode`, 'success');
-  };
+  const handleThemeChange = useCallback((newTheme: 'light' | 'dark') => {
+    try {
+      setTheme(newTheme);
+      showFeedback(`Theme changed to ${newTheme} mode`, 'success');
+    } catch (error) {
+      console.error('Error changing theme:', error);
+      showFeedback('Error changing theme', 'error');
+    }
+  }, [setTheme, showFeedback]);
 
-  const resetSettings = () => {
-    const defaultSettings = {
-      autoSave: true,
-      notifications: true,
-      language: 'en',
-      fontSize: 'medium',
-      compactMode: false,
-      showSources: true,
-      enableMessageEditing: true,
-      enableChatExport: true,
-      enableChatImport: true
-    };
-    setSettings(defaultSettings);
-    localStorage.setItem('appSettings', JSON.stringify(defaultSettings));
-    
-    const defaultAISettings: AISettings = {
-      defaultProvider: 'openai',
-      openaiApiKey: '',
-      geminiApiKey: '',
-      maxTokens: 2048,
-      temperature: 0.7,
-      searchWeb: true
-    };
-    setAiSettings(defaultAISettings);
-    localStorage.setItem('aiSettings', JSON.stringify(defaultAISettings));
-    
-    showFeedback('Settings reset to defaults', 'success');
-  };
+  const resetSettings = useCallback(() => {
+    try {
+      setIsLoading(true);
+      
+      const defaultSettings = {
+        autoSave: true,
+        notifications: true,
+        language: 'en',
+        fontSize: 'medium',
+        compactMode: false,
+        showSources: true,
+        enableMessageEditing: true,
+        enableChatExport: true,
+        enableChatImport: true
+      };
+      setSettings(defaultSettings);
+      localStorage.setItem('appSettings', JSON.stringify(defaultSettings));
+      
+      const defaultAISettings: AISettings = {
+        defaultProvider: 'openai',
+        openaiApiKey: '',
+        geminiApiKey: '',
+        maxTokens: 2048,
+        temperature: 0.7,
+        searchWeb: true
+      };
+      setAiSettings(defaultAISettings);
+      localStorage.setItem('aiSettings', JSON.stringify(defaultAISettings));
+      
+      showFeedback('Settings reset to defaults', 'success');
+    } catch (error) {
+      console.error('Error resetting settings:', error);
+      showFeedback('Error resetting settings', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showFeedback]);
 
-  const exportSettings = () => {
-    const exportData = {
-      settings,
-      aiSettings,
-      exportDate: new Date().toISOString(),
-      version: '1.0'
-    };
+  const exportSettings = useCallback(() => {
+    try {
+      const exportData = {
+        settings,
+        aiSettings,
+        exportDate: new Date().toISOString(),
+        version: '1.0'
+      };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'docnet-settings.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showFeedback('Settings exported successfully', 'success');
-  };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'docnet-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showFeedback('Settings exported successfully', 'success');
+    } catch (error) {
+      console.error('Error exporting settings:', error);
+      showFeedback('Error exporting settings', 'error');
+    }
+  }, [settings, aiSettings, showFeedback]);
 
-  const importSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const importSettings = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -191,40 +229,62 @@ export default function Settings() {
       }
     };
     reader.readAsText(file);
-  };
+    
+    // Reset the input value to allow re-importing the same file
+    event.target.value = '';
+  }, [showFeedback]);
 
-  const clearChatHistory = () => {
+  const clearChatHistory = useCallback(() => {
     if (window.confirm('Are you sure you want to clear all chat history? This action cannot be undone.')) {
-      localStorage.removeItem('chatSessions');
-      showFeedback('Chat history cleared', 'success');
+      try {
+        localStorage.removeItem('chatSessions');
+        showFeedback('Chat history cleared', 'success');
+      } catch (error) {
+        console.error('Error clearing chat history:', error);
+        showFeedback('Error clearing chat history', 'error');
+      }
     }
-  };
+  }, [showFeedback]);
 
-  const clearUploadedFiles = () => {
+  const clearUploadedFiles = useCallback(() => {
     if (window.confirm('Are you sure you want to clear all uploaded files? This action cannot be undone.')) {
-      localStorage.removeItem('uploadedFiles');
-      showFeedback('Uploaded files cleared', 'success');
+      try {
+        localStorage.removeItem('uploadedFiles');
+        showFeedback('Uploaded files cleared', 'success');
+      } catch (error) {
+        console.error('Error clearing uploaded files:', error);
+        showFeedback('Error clearing uploaded files', 'error');
+      }
     }
-  };
+  }, [showFeedback]);
 
   // Apply font size to document
   useEffect(() => {
-    const root = document.documentElement;
-    switch (settings.fontSize) {
-      case 'small':
-        root.style.fontSize = '14px';
-        break;
-      case 'medium':
-        root.style.fontSize = '16px';
-        break;
-      case 'large':
-        root.style.fontSize = '18px';
-        break;
+    try {
+      const root = document.documentElement;
+      switch (settings.fontSize) {
+        case 'small':
+          root.style.fontSize = '14px';
+          break;
+        case 'medium':
+          root.style.fontSize = '16px';
+          break;
+        case 'large':
+          root.style.fontSize = '18px';
+          break;
+      }
+    } catch (error) {
+      console.error('Error applying font size:', error);
     }
   }, [settings.fontSize]);
 
   return (
     <div className="settings-page">
+      {isLoading && (
+        <div className="loading-overlay">
+          <div className="loading-spinner"></div>
+        </div>
+      )}
       <Navigation currentPage="settings" />
       
       <div className="settings-container">
@@ -267,14 +327,18 @@ export default function Settings() {
                 <span>Theme</span>
                 <div className="theme-buttons">
                   <button
+                    type="button"
                     className={`theme-btn ${theme === 'light' ? 'active' : ''}`}
                     onClick={() => handleThemeChange('light')}
+                    disabled={isLoading}
                   >
                     ☀️ Light
                   </button>
                   <button
+                    type="button"
                     className={`theme-btn ${theme === 'dark' ? 'active' : ''}`}
                     onClick={() => handleThemeChange('dark')}
+                    disabled={isLoading}
                   >
                     🌙 Dark
                   </button>
@@ -289,6 +353,7 @@ export default function Settings() {
                   value={settings.fontSize}
                   onChange={(e) => handleSettingChange('fontSize', e.target.value)}
                   className="setting-select"
+                  disabled={isLoading}
                 >
                   <option value="small">Small</option>
                   <option value="medium">Medium</option>
@@ -304,6 +369,7 @@ export default function Settings() {
                   value={settings.language}
                   onChange={(e) => handleSettingChange('language', e.target.value)}
                   className="setting-select"
+                  disabled={isLoading}
                 >
                   <option value="en">English</option>
                   <option value="es">Español</option>
@@ -320,6 +386,7 @@ export default function Settings() {
                   checked={settings.autoSave}
                   onChange={(e) => handleSettingChange('autoSave', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Auto-save chat sessions</span>
               </label>
@@ -332,6 +399,7 @@ export default function Settings() {
                   checked={settings.notifications}
                   onChange={(e) => handleSettingChange('notifications', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Enable notifications</span>
               </label>
@@ -344,6 +412,7 @@ export default function Settings() {
                   checked={settings.compactMode}
                   onChange={(e) => handleSettingChange('compactMode', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Compact mode</span>
               </label>
@@ -361,6 +430,7 @@ export default function Settings() {
                   value={aiSettings.defaultProvider}
                   onChange={(e) => handleAISettingChange('defaultProvider', e.target.value)}
                   className="setting-select"
+                  disabled={isLoading}
                 >
                   <option value="openai">OpenAI GPT-4</option>
                   <option value="gemini">Google Gemini</option>
@@ -377,6 +447,7 @@ export default function Settings() {
                   onChange={(e) => handleAISettingChange('openaiApiKey', e.target.value)}
                   placeholder="sk-..."
                   className="setting-input"
+                  disabled={isLoading}
                 />
               </label>
             </div>
@@ -390,6 +461,7 @@ export default function Settings() {
                   onChange={(e) => handleAISettingChange('geminiApiKey', e.target.value)}
                   placeholder="AIza..."
                   className="setting-input"
+                  disabled={isLoading}
                 />
               </label>
             </div>
@@ -405,6 +477,7 @@ export default function Settings() {
                   max="4096"
                   step="512"
                   className="setting-input"
+                  disabled={isLoading}
                 />
               </label>
             </div>
@@ -420,6 +493,7 @@ export default function Settings() {
                   max="1"
                   step="0.1"
                   className="setting-slider"
+                  disabled={isLoading}
                 />
                 <span className="slider-value">{aiSettings.temperature}</span>
               </label>
@@ -432,6 +506,7 @@ export default function Settings() {
                   checked={aiSettings.searchWeb}
                   onChange={(e) => handleAISettingChange('searchWeb', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Enable web search by default</span>
               </label>
@@ -449,6 +524,7 @@ export default function Settings() {
                   checked={settings.showSources}
                   onChange={(e) => handleSettingChange('showSources', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Show sources in responses</span>
               </label>
@@ -461,6 +537,7 @@ export default function Settings() {
                   checked={settings.enableMessageEditing}
                   onChange={(e) => handleSettingChange('enableMessageEditing', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Enable message editing</span>
               </label>
@@ -473,6 +550,7 @@ export default function Settings() {
                   checked={settings.enableChatExport}
                   onChange={(e) => handleSettingChange('enableChatExport', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Enable chat export</span>
               </label>
@@ -485,6 +563,7 @@ export default function Settings() {
                   checked={settings.enableChatImport}
                   onChange={(e) => handleSettingChange('enableChatImport', e.target.checked)}
                   className="setting-checkbox"
+                  disabled={isLoading}
                 />
                 <span>Enable chat import</span>
               </label>
@@ -496,7 +575,12 @@ export default function Settings() {
             <h2 className="section-title">Data Management</h2>
             
             <div className="setting-group">
-              <button onClick={exportSettings} className="action-btn">
+              <button 
+                type="button"
+                onClick={exportSettings} 
+                className="action-btn"
+                disabled={isLoading}
+              >
                 📤 Export Settings
               </button>
               <input
@@ -505,23 +589,39 @@ export default function Settings() {
                 onChange={importSettings}
                 style={{ display: 'none' }}
                 id="import-settings"
+                disabled={isLoading}
               />
-              <label htmlFor="import-settings" className="action-btn">
+              <label htmlFor="import-settings" className={`action-btn ${isLoading ? 'disabled' : ''}`}>
                 📥 Import Settings
               </label>
             </div>
 
             <div className="setting-group">
-              <button onClick={clearChatHistory} className="action-btn danger">
+              <button 
+                type="button"
+                onClick={clearChatHistory} 
+                className="action-btn danger"
+                disabled={isLoading}
+              >
                 🗑️ Clear Chat History
               </button>
-              <button onClick={clearUploadedFiles} className="action-btn danger">
+              <button 
+                type="button"
+                onClick={clearUploadedFiles} 
+                className="action-btn danger"
+                disabled={isLoading}
+              >
                 🗑️ Clear Uploaded Files
               </button>
             </div>
 
             <div className="setting-group">
-              <button onClick={resetSettings} className="action-btn danger">
+              <button 
+                type="button"
+                onClick={resetSettings} 
+                className="action-btn danger"
+                disabled={isLoading}
+              >
                 🔄 Reset All Settings
               </button>
             </div>
