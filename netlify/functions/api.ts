@@ -94,7 +94,7 @@ async function performWebSearch(query: string): Promise<any[]> {
   }
 }
 
-// Ultra-fast document analysis with optimized processing
+// Enhanced document analysis with chunking and indexing for large documents
 async function analyzeDocumentsForRelevance(query: string, documents: any[]): Promise<any[]> {
   const startTime = performance.now();
   const queryLower = query.toLowerCase();
@@ -119,111 +119,34 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
     'history', 'historical', 'ancient', 'temple', 'religious', 'sacred', 'pilgrimage'
   ]);
   
-  // Process documents in parallel batches for better performance
-  const batchSize = Math.min(5, documents.length);
+  // Smart chunking based on document size
+  const getChunkSize = (documents: any[]) => {
+    const totalSize = documents.reduce((sum, doc) => sum + (doc.content?.length || 0), 0);
+    if (totalSize > 1000000) return 2; // Large documents: smaller chunks
+    if (totalSize > 500000) return 3;  // Medium documents: medium chunks
+    return 5; // Small documents: larger chunks
+  };
+  
+  const chunkSize = getChunkSize(documents);
   const results = [];
   
-  for (let i = 0; i < documents.length; i += batchSize) {
-    const batch = documents.slice(i, i + batchSize);
+  // Process documents in smart chunks with progress tracking
+  for (let i = 0; i < documents.length; i += chunkSize) {
+    const chunk = documents.slice(i, i + chunkSize);
     
-    // Process batch in parallel with timeout
-    const batchPromises = batch.map(async (doc, index) => {
-      // Add small delay to prevent blocking
-      if (index > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1));
-      }
-      
-      const contentLower = doc.content.toLowerCase();
-      const summaryLower = doc.summary.toLowerCase();
-      const nameLower = doc.name.toLowerCase();
-      
-      // Fast relevance calculation
-      let relevanceScore = 0;
-      let matchDetails = {
-        exactMatches: 0,
-        summaryMatches: 0,
-        contentMatches: 0,
-        nameMatches: 0,
-        partialMatches: 0
-      };
-      
-      // Quick exact phrase check first (highest priority)
-      if (contentLower.includes(queryLower)) {
-        relevanceScore += 20;
-        matchDetails.exactMatches++;
-      }
-      if (summaryLower.includes(queryLower)) {
-        relevanceScore += 25;
-        matchDetails.exactMatches++;
-      }
-      
-      // Early exit for high-scoring documents
-      if (relevanceScore >= 25) {
-        return {
-          ...doc,
-          relevanceScore,
-          matchDetails,
-          isRelevant: true,
-          confidence: 'high'
-        };
-      }
-      
-      // Word matching with early exit
-      for (const word of queryWords) {
-        if (contentLower.includes(word)) {
-          relevanceScore += 3;
-          matchDetails.contentMatches++;
-        }
-        if (summaryLower.includes(word)) {
-          relevanceScore += 6;
-          matchDetails.summaryMatches++;
-        }
-        if (nameLower.includes(word)) {
-          relevanceScore += 5;
-          matchDetails.nameMatches++;
-        }
-        
-        // Early exit if already relevant
-        if (relevanceScore >= 15) break;
-      }
-      
-      // Quick semantic keyword check
-      for (const keyword of semanticKeywords) {
-        if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
-          relevanceScore += 3;
-          if (relevanceScore >= 15) break;
-        }
-      }
-      
-      // Content quality bonuses
-      if (contentLower.length > 500) relevanceScore += 2;
-      if (summaryLower.length > 100) relevanceScore += 3;
-      
-      return {
-        ...doc,
-        relevanceScore,
-        matchDetails,
-        isRelevant: relevanceScore >= 2,
-        confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
-      };
-    });
+    console.log(`Processing chunk ${Math.floor(i / chunkSize) + 1}/${Math.ceil(documents.length / chunkSize)} (${chunk.length} documents)`);
     
-    // Wait for batch with timeout
-    const batchTimeout = new Promise<any[]>((_, reject) => {
-      setTimeout(() => reject(new Error('Document analysis timeout')), 10000); // 10 second timeout per batch
-    });
-    
+    // Process chunk with timeout and error handling
     try {
-      const batchResults = await Promise.race([
-        Promise.all(batchPromises),
-        batchTimeout
-      ]);
-      results.push(...batchResults);
+      const chunkResults = await processDocumentChunk(chunk, queryLower, queryWords, semanticKeywords);
+      results.push(...chunkResults);
       
-      console.log(`Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(documents.length / batchSize)}`);
+      // Yield control to prevent blocking
+      await new Promise(resolve => setTimeout(resolve, 5));
+      
     } catch (error) {
-      console.error(`Batch processing error:`, error);
-      // Continue with next batch
+      console.error(`Chunk processing error:`, error);
+      // Continue with next chunk
     }
   }
   
@@ -239,6 +162,105 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
   console.log(`Processing rate: ${(documents.length / (processingTime / 1000)).toFixed(2)} documents/second`);
   
   return relevantDocs;
+}
+
+// Process individual document chunk with optimized analysis
+async function processDocumentChunk(
+  documents: any[], 
+  queryLower: string, 
+  queryWords: string[], 
+  semanticKeywords: Set<string>
+): Promise<any[]> {
+  const chunkPromises = documents.map(async (doc, index) => {
+    // Add small delay to prevent blocking
+    if (index > 0) {
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    
+    const contentLower = doc.content.toLowerCase();
+    const summaryLower = doc.summary.toLowerCase();
+    const nameLower = doc.name.toLowerCase();
+    
+    // Fast relevance calculation with early exits
+    let relevanceScore = 0;
+    let matchDetails = {
+      exactMatches: 0,
+      summaryMatches: 0,
+      contentMatches: 0,
+      nameMatches: 0,
+      partialMatches: 0
+    };
+    
+    // Quick exact phrase check first (highest priority)
+    if (contentLower.includes(queryLower)) {
+      relevanceScore += 20;
+      matchDetails.exactMatches++;
+    }
+    if (summaryLower.includes(queryLower)) {
+      relevanceScore += 25;
+      matchDetails.exactMatches++;
+    }
+    
+    // Early exit for high-scoring documents
+    if (relevanceScore >= 25) {
+      return {
+        ...doc,
+        relevanceScore,
+        matchDetails,
+        isRelevant: true,
+        confidence: 'high'
+      };
+    }
+    
+    // Optimized word matching with early exit
+    for (const word of queryWords) {
+      if (contentLower.includes(word)) {
+        relevanceScore += 3;
+        matchDetails.contentMatches++;
+      }
+      if (summaryLower.includes(word)) {
+        relevanceScore += 6;
+        matchDetails.summaryMatches++;
+      }
+      if (nameLower.includes(word)) {
+        relevanceScore += 5;
+        matchDetails.nameMatches++;
+      }
+      
+      // Early exit if already relevant
+      if (relevanceScore >= 15) break;
+    }
+    
+    // Quick semantic keyword check
+    for (const keyword of semanticKeywords) {
+      if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
+        relevanceScore += 3;
+        if (relevanceScore >= 15) break;
+      }
+    }
+    
+    // Content quality bonuses
+    if (contentLower.length > 500) relevanceScore += 2;
+    if (summaryLower.length > 100) relevanceScore += 3;
+    
+    return {
+      ...doc,
+      relevanceScore,
+      matchDetails,
+      isRelevant: relevanceScore >= 2,
+      confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
+    };
+  });
+  
+  // Process chunk with timeout
+  const chunkTimeout = new Promise<any[]>((_, reject) => {
+    setTimeout(() => reject(new Error('Document chunk processing timeout')), 15000); // 15 second timeout per chunk
+  });
+  
+  return await Promise.race([
+    Promise.all(chunkPromises),
+    chunkTimeout
+  ]);
 }
 
 // Call Gemini API

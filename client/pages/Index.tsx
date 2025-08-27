@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService, ChatRequest, ChatResponse } from '../services/api';
 import { documentProcessor } from '../services/documentProcessor';
+import { enhancedDocumentProcessor } from '../services/enhancedDocumentProcessor';
 import Navigation from '../components/Navigation';
 import './Index.css';
 
@@ -71,6 +72,7 @@ export default function Index() {
   const [loadingStage, setLoadingStage] = useState<string>('');
   const [processingTime, setProcessingTime] = useState<number>(0);
   const [processingProgress, setProcessingProgress] = useState<number>(0);
+  const [documentStats, setDocumentStats] = useState<any>(null);
   const [userFiles, setUserFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -150,10 +152,11 @@ export default function Index() {
     }
   }, [chatSessions]);
 
-  // Cleanup document processor on unmount
+  // Cleanup document processors on unmount
   useEffect(() => {
     return () => {
       documentProcessor.destroy();
+      enhancedDocumentProcessor.destroy();
     };
   }, []);
 
@@ -213,32 +216,82 @@ export default function Index() {
         const file = files[i];
         const fileId = Date.now() + i;
         
-        // Use the production API service
-        const result = await apiService.uploadFile(file);
+        // Enhanced file size checking with different limits for different file types
+        const maxSize = file.type === 'application/pdf' ? 50 * 1024 * 1024 : 10 * 1024 * 1024; // 50MB for PDFs, 10MB for others
+        if (file.size > maxSize) {
+          alert(`File ${file.name} is too large. Maximum size is ${Math.round(maxSize / (1024 * 1024))}MB.`);
+          continue;
+        }
 
-        if (result.success) {
-          const uploadedFile: UploadedFile = {
-            id: fileId.toString(),
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            processed: true,
-            uploadedAt: new Date(),
-            content: result.content || `Content from ${file.name}`,
-            summary: result.summary || `Summary of ${file.name}`
-          };
+        // Show processing status for large files
+        if (file.size > 5 * 1024 * 1024) { // 5MB threshold
+          setLoadingStage(`Processing large file: ${file.name}...`);
+        }
+        
+        // Use the production API service with timeout for large files
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout for large files
 
-          newFiles.push(uploadedFile);
-        } else {
-          console.error(`Failed to upload ${file.name}:`, result.error);
+        try {
+          const result = await apiService.uploadFile(file);
+
+          clearTimeout(timeoutId);
+
+          if (result.success) {
+            // For large PDFs, use enhanced processing
+            if (file.type === 'application/pdf' && file.size > 5 * 1024 * 1024) {
+              setLoadingStage(`Indexing large PDF: ${file.name}...`);
+              
+              try {
+                const pdfResult = await enhancedDocumentProcessor.processLargePDF(
+                  file,
+                  (progress) => {
+                    setProcessingProgress(progress.percentage);
+                    setLoadingStage(`Indexing PDF page ${progress.pageNum}/${progress.totalPages}...`);
+                  }
+                );
+                
+                if (pdfResult.success) {
+                  setDocumentStats(pdfResult.stats);
+                }
+              } catch (error) {
+                console.warn('Enhanced PDF processing failed:', error);
+              }
+            }
+            
+            const uploadedFile: UploadedFile = {
+              id: fileId.toString(),
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              processed: true,
+              uploadedAt: new Date(),
+              content: result.content || `Content from ${file.name}`,
+              summary: result.summary || `Summary of ${file.name}`
+            };
+
+            newFiles.push(uploadedFile);
+          } else {
+            console.error(`Failed to upload ${file.name}:`, result.error);
+          }
+        } catch (error) {
+          clearTimeout(timeoutId);
+          if (error instanceof Error && error.name === 'AbortError') {
+            alert(`Upload timeout for ${file.name}. File may be too large.`);
+          } else {
+            throw error;
+          }
         }
       }
 
       setUserFiles(prev => [...prev, ...newFiles]);
     } catch (error) {
       console.error('Upload error:', error);
+      alert('Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
+      setLoadingStage('');
+      setProcessingProgress(0);
       // Clear the input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -346,24 +399,43 @@ export default function Index() {
         content: msg.content
       }));
 
-      // Use Web Worker for document processing if available
+      // Use enhanced document processing for large documents
       let relevantDocuments = documentContext;
       
       if (documentContext.length > 0) {
         setLoadingStage('Analyzing documents...');
         
         try {
-          // Process documents using Web Worker with progress tracking
-          relevantDocuments = await documentProcessor.processDocuments(
-            documentContext,
-            inputValue,
-            (progress) => {
-              setProcessingProgress(progress);
-              setLoadingStage(`Analyzing documents... ${progress}%`);
-            }
+          // Check if we have large documents that need enhanced processing
+          const hasLargeDocuments = documentContext.some(doc => 
+            doc.content && doc.content.length > 100000 // 100KB threshold
           );
+          
+          if (hasLargeDocuments) {
+            setLoadingStage('Processing large documents with enhanced analysis...');
+            
+            // Use enhanced processor for large documents
+            relevantDocuments = await enhancedDocumentProcessor.processDocumentsEnhanced(
+              documentContext,
+              inputValue,
+              (progress) => {
+                setProcessingProgress(progress);
+                setLoadingStage(`Enhanced document analysis... ${progress}%`);
+              }
+            );
+          } else {
+            // Use standard processor for smaller documents
+            relevantDocuments = await documentProcessor.processDocuments(
+              documentContext,
+              inputValue,
+              (progress) => {
+                setProcessingProgress(progress);
+                setLoadingStage(`Analyzing documents... ${progress}%`);
+              }
+            );
+          }
         } catch (error) {
-          console.warn('Web Worker processing failed, using fallback:', error);
+          console.warn('Enhanced processing failed, using fallback:', error);
           // Fallback to original documents
           relevantDocuments = documentContext;
         }
@@ -881,6 +953,35 @@ export default function Index() {
                       <span></span>
                       <span></span>
                       <span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Document Statistics Display */}
+            {documentStats && (
+              <div className="message assistant">
+                <div className="message-content">
+                  <div className="document-stats">
+                    <h4>📊 Document Statistics</h4>
+                    <div className="stats-grid">
+                      <div className="stat-item">
+                        <span className="stat-label">Total Pages:</span>
+                        <span className="stat-value">{documentStats.totalPages}</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-label">Total Words:</span>
+                        <span className="stat-value">{documentStats.totalWords.toLocaleString()}</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-label">Text Length:</span>
+                        <span className="stat-value">{(documentStats.totalTextLength / 1024).toFixed(1)} KB</span>
+                      </div>
+                      <div className="stat-item">
+                        <span className="stat-label">Indexed Words:</span>
+                        <span className="stat-value">{documentStats.indexedWords.toLocaleString()}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
