@@ -4,6 +4,15 @@ import { apiService, ChatRequest, ChatResponse } from '../services/api';
 import Navigation from '../components/Navigation';
 import './Index.css';
 
+// Debounce utility function
+const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return (...args: any[]) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(null, args), wait);
+  };
+};
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -146,9 +155,21 @@ export default function Index() {
     return timestamp.toLocaleDateString();
   }, []);
 
+  // Debounced input handler to prevent excessive processing
+  const debouncedInputChange = useCallback(
+    debounce((value: string) => {
+      setInputValue(value);
+    }, 100),
+    []
+  );
+
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputValue(e.target.value);
-  }, []);
+    const value = e.target.value;
+    // Update immediately for UI responsiveness
+    e.target.value = value;
+    // Debounce the actual state update
+    debouncedInputChange(value);
+  }, [debouncedInputChange]);
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -279,6 +300,9 @@ export default function Index() {
     setInputValue('');
     setIsLoading(true);
 
+    // Add a small delay to prevent UI blocking and show loading state
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     try {
       // Prepare document context
       const documentContext = userFiles
@@ -304,7 +328,15 @@ export default function Index() {
         searchWeb: searchWeb || documentContext.length === 0 // Always search web if no documents
       };
 
-      const response: ChatResponse = await apiService.sendChatMessage(request);
+      // Add timeout to prevent hanging requests
+      const timeoutPromise = new Promise<ChatResponse>((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
+      });
+
+      const response: ChatResponse = await Promise.race([
+        apiService.sendChatMessage(request),
+        timeoutPromise
+      ]);
 
       // Enhanced response handling with better context awareness
       let enhancedResponse = response.response;
@@ -354,25 +386,29 @@ export default function Index() {
         ));
       }
 
-    } catch (error) {
-      console.error('Chat error:', error);
-      
-      let errorContent = 'I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.';
-      
-      // Provide more specific error messages
-      if (error instanceof Error) {
-        if (error.message.includes('API key') || error.message.includes('authentication')) {
-          errorContent = '⚠️ **Authentication Error:** Please check your API keys in Settings. The AI service requires valid API credentials to function.';
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorContent = '🌐 **Network Error:** Unable to connect to the AI service. Please check your internet connection and try again.';
-        } else if (error.message.includes('rate limit')) {
-          errorContent = '⏱️ **Rate Limit Exceeded:** Too many requests. Please wait a moment and try again.';
-        } else if (error.message.includes('document') || error.message.includes('file')) {
-          errorContent = '📄 **Document Processing Error:** There was an issue processing your uploaded documents. Please try re-uploading them.';
-        } else if (error.message.includes('context') || error.message.includes('insufficient')) {
-          errorContent = '🤔 **Insufficient Context:** I don\'t have enough information from your uploaded documents to answer this question fully. Could you provide more details or upload additional relevant documents?';
+          } catch (error) {
+        console.error('Chat error:', error);
+        
+        let errorContent = 'I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.';
+        
+        // Provide more specific error messages
+        if (error instanceof Error) {
+          if (error.message.includes('timeout')) {
+            errorContent = '⏱️ **Request Timeout:** The request took too long to process. This might be due to large documents or high server load. Please try again with a simpler query or fewer documents.';
+          } else if (error.message.includes('API key') || error.message.includes('authentication')) {
+            errorContent = '⚠️ **Authentication Error:** Please check your API keys in Settings. The AI service requires valid API credentials to function.';
+          } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            errorContent = '🌐 **Network Error:** Unable to connect to the AI service. Please check your internet connection and try again.';
+          } else if (error.message.includes('rate limit')) {
+            errorContent = '⏱️ **Rate Limit Exceeded:** Too many requests. Please wait a moment and try again.';
+          } else if (error.message.includes('document') || error.message.includes('file')) {
+            errorContent = '📄 **Document Processing Error:** There was an issue processing your uploaded documents. Please try re-uploading them.';
+          } else if (error.message.includes('context') || error.message.includes('insufficient')) {
+            errorContent = '🤔 **Insufficient Context:** I don\'t have enough information from your uploaded documents to answer this question fully. Could you provide more details or upload additional relevant documents?';
+          } else if (error.message.includes('performance') || error.message.includes('blocking')) {
+            errorContent = '⚡ **Performance Issue:** The request is taking longer than expected. This might be due to large documents. Please try with fewer documents or a simpler query.';
+          }
         }
-      }
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),

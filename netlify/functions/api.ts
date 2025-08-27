@@ -81,97 +81,113 @@ async function performWebSearch(query: string): Promise<any[]> {
   }
 }
 
-// Enhanced document analysis function with improved relevance scoring
-function analyzeDocumentsForRelevance(query: string, documents: any[]): any[] {
+// Optimized document analysis function with async processing and performance improvements
+async function analyzeDocumentsForRelevance(query: string, documents: any[]): Promise<any[]> {
   const queryLower = query.toLowerCase();
-  const queryWords = queryLower.split(/\s+/).filter(word => word.length > 1); // Lower word length threshold
+  const queryWords = queryLower.split(/\s+/).filter(word => word.length > 1);
   
   console.log(`Analyzing documents for query: "${query}"`);
   console.log(`Query words: ${queryWords.join(', ')}`);
   
-  const results = documents.map(doc => {
-    const contentLower = doc.content.toLowerCase();
-    const summaryLower = doc.summary.toLowerCase();
-    const nameLower = doc.name.toLowerCase();
+  // Pre-compile semantic keywords for better performance
+  const semanticKeywords = new Set([
+    'research', 'study', 'analysis', 'data', 'findings', 'conclusion', 'method', 'result',
+    'report', 'document', 'paper', 'article', 'summary', 'overview', 'details', 'information',
+    'statistics', 'figures', 'numbers', 'percentages', 'trends', 'patterns', 'insights',
+    'mount', 'mountain', 'hill', 'peak', 'summit', 'location', 'place', 'area', 'region',
+    'history', 'historical', 'ancient', 'temple', 'religious', 'sacred', 'pilgrimage'
+  ]);
+  
+  // Process documents in chunks to avoid blocking
+  const chunkSize = 3;
+  const results = [];
+  
+  for (let i = 0; i < documents.length; i += chunkSize) {
+    const chunk = documents.slice(i, i + chunkSize);
     
-    // Calculate comprehensive relevance score
-    let relevanceScore = 0;
-    let matchDetails = {
-      exactMatches: 0,
-      summaryMatches: 0,
-      contentMatches: 0,
-      nameMatches: 0,
-      partialMatches: 0
-    };
-    
-    // Check for exact word matches (more sensitive)
-    queryWords.forEach(word => {
-      if (contentLower.includes(word)) {
-        relevanceScore += 3; // Increased from 2
-        matchDetails.contentMatches++;
+    // Process chunk asynchronously
+    const chunkResults = await Promise.all(chunk.map(async (doc, index) => {
+      // Yield control to prevent blocking
+      if (index % 2 === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
-      if (summaryLower.includes(word)) {
-        relevanceScore += 6; // Increased from 4
-        matchDetails.summaryMatches++;
+      
+      const contentLower = doc.content.toLowerCase();
+      const summaryLower = doc.summary.toLowerCase();
+      const nameLower = doc.name.toLowerCase();
+      
+      // Calculate relevance score with optimized logic
+      let relevanceScore = 0;
+      let matchDetails = {
+        exactMatches: 0,
+        summaryMatches: 0,
+        contentMatches: 0,
+        nameMatches: 0,
+        partialMatches: 0
+      };
+      
+      // Optimized word matching with early exit
+      for (const word of queryWords) {
+        if (contentLower.includes(word)) {
+          relevanceScore += 3;
+          matchDetails.contentMatches++;
+        }
+        if (summaryLower.includes(word)) {
+          relevanceScore += 6;
+          matchDetails.summaryMatches++;
+        }
+        if (nameLower.includes(word)) {
+          relevanceScore += 5;
+          matchDetails.nameMatches++;
+        }
       }
-      if (nameLower.includes(word)) {
-        relevanceScore += 5; // Increased from 3
-        matchDetails.nameMatches++;
+      
+      // Check for exact phrase matches
+      if (contentLower.includes(queryLower)) {
+        relevanceScore += 20;
+        matchDetails.exactMatches++;
       }
-    });
-    
-    // Check for exact phrase matches (highest priority)
-    if (contentLower.includes(queryLower)) {
-      relevanceScore += 20; // Increased from 10
-      matchDetails.exactMatches++;
-    }
-    if (summaryLower.includes(queryLower)) {
-      relevanceScore += 25; // Increased from 15
-      matchDetails.exactMatches++;
-    }
-    
-    // Check for partial phrase matches (new)
-    const queryParts = queryLower.split(/\s+/);
-    if (queryParts.length > 1) {
-      // Check if most words in the query are found in content
-      const matchingParts = queryParts.filter(part => contentLower.includes(part));
-      if (matchingParts.length >= Math.ceil(queryParts.length * 0.7)) { // 70% match threshold
-        relevanceScore += 15;
-        matchDetails.partialMatches++;
+      if (summaryLower.includes(queryLower)) {
+        relevanceScore += 25;
+        matchDetails.exactMatches++;
       }
-    }
-    
-    // Check for semantic similarity with expanded keywords
-    const semanticKeywords = [
-      'research', 'study', 'analysis', 'data', 'findings', 'conclusion', 'method', 'result',
-      'report', 'document', 'paper', 'article', 'summary', 'overview', 'details', 'information',
-      'statistics', 'figures', 'numbers', 'percentages', 'trends', 'patterns', 'insights',
-      'mount', 'mountain', 'hill', 'peak', 'summit', 'location', 'place', 'area', 'region',
-      'history', 'historical', 'ancient', 'temple', 'religious', 'sacred', 'pilgrimage'
-    ];
-    
-    semanticKeywords.forEach(keyword => {
-      if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
-        relevanceScore += 3; // Increased from 2
+      
+      // Optimized partial phrase matching
+      const queryParts = queryLower.split(/\s+/);
+      if (queryParts.length > 1) {
+        const matchingParts = queryParts.filter(part => contentLower.includes(part));
+        if (matchingParts.length >= Math.ceil(queryParts.length * 0.7)) {
+          relevanceScore += 15;
+          matchDetails.partialMatches++;
+        }
       }
-    });
+      
+      // Optimized semantic keyword matching
+      for (const keyword of semanticKeywords) {
+        if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
+          relevanceScore += 3;
+        }
+      }
+      
+      // Content quality bonuses
+      if (contentLower.length > 500) relevanceScore += 2;
+      if (summaryLower.length > 100) relevanceScore += 3;
+      
+      const result = {
+        ...doc,
+        relevanceScore,
+        matchDetails,
+        isRelevant: relevanceScore >= 2,
+        confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
+      };
+      
+      console.log(`Document "${doc.name}": score=${relevanceScore}, matches=${JSON.stringify(matchDetails)}, relevant=${result.isRelevant}`);
+      
+      return result;
+    }));
     
-    // Bonus for documents with substantial content
-    if (contentLower.length > 500) relevanceScore += 2;
-    if (summaryLower.length > 100) relevanceScore += 3;
-    
-    const result = {
-      ...doc,
-      relevanceScore,
-      matchDetails,
-      isRelevant: relevanceScore >= 2, // Lowered threshold from 3 to 2
-      confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
-    };
-    
-    console.log(`Document "${doc.name}": score=${relevanceScore}, matches=${JSON.stringify(matchDetails)}, relevant=${result.isRelevant}`);
-    
-    return result;
-  });
+    results.push(...chunkResults);
+  }
   
   const relevantDocs = results.filter(doc => doc.isRelevant)
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
@@ -250,7 +266,7 @@ async function callOpenAIAPI(prompt: string, documents: any[] = [], webResults: 
     const client = getOpenAIClient();
     
     // Analyze documents for relevance
-    const relevantDocuments = analyzeDocumentsForRelevance(prompt, documents);
+    const relevantDocuments = await analyzeDocumentsForRelevance(prompt, documents);
     
     // Build comprehensive system message
     let systemMessage = `You are **DocNet**, an intelligent research assistant that combines uploaded documents with web knowledge to provide comprehensive, accurate, and insightful responses.
@@ -420,7 +436,7 @@ export const handler: Handler = async (event) => {
     console.log(`AI Provider: ${aiProvider}`);
 
     // Step 1: Analyze documents for relevance
-    const relevantDocuments = analyzeDocumentsForRelevance(message, documents);
+    const relevantDocuments = await analyzeDocumentsForRelevance(message, documents);
     console.log(`Found ${relevantDocuments.length} relevant documents`);
 
     // Step 2: Determine response strategy based on document availability
