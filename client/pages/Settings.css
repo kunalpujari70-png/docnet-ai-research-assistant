@@ -111,7 +111,13 @@
 .settings-section:hover {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
+}
+
+/* Optimize animations for better performance */
+.settings-section {
+  will-change: transform, background-color, border-color;
+  transform: translateZ(0); /* Force hardware acceleration */
 }
 
 .section-title {
@@ -282,6 +288,12 @@
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
+}
+
+/* Optimize button animations */
+.action-btn {
+  will-change: transform, background-color, border-color;
+  transform: translateZ(0); /* Force hardware acceleration */
 }
 
 .action-btn.danger {

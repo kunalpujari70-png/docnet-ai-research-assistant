@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Navigation from '../components/Navigation';
 import './Settings.css';
@@ -17,6 +17,15 @@ interface AISettings {
   temperature: number;
   searchWeb: boolean;
 }
+
+// Debounce utility function
+const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return (...args: any[]) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(null, args), wait);
+  };
+};
 
 export default function Settings() {
   const { theme, setTheme } = useTheme();
@@ -49,88 +58,161 @@ export default function Settings() {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // Refs to prevent memory leaks
+  const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fontSizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Load saved settings from localStorage on mount
-  useEffect(() => {
-    try {
-      const savedSettings = localStorage.getItem('appSettings');
-      if (savedSettings) {
-        const parsedSettings = JSON.parse(savedSettings);
-        setSettings(prev => ({ ...prev, ...parsedSettings }));
-      }
+  // Memoized settings to prevent unnecessary re-renders
+  const memoizedSettings = useMemo(() => settings, [settings]);
+  const memoizedAISettings = useMemo(() => aiSettings, [aiSettings]);
 
-      const savedAISettings = localStorage.getItem('aiSettings');
-      if (savedAISettings) {
-        const parsedAISettings = JSON.parse(savedAISettings);
-        setAiSettings(prev => ({ ...prev, ...parsedAISettings }));
+  // Safe localStorage operations with error handling
+  const safeLocalStorage = {
+    getItem: (key: string): any => {
+      try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : null;
+      } catch (error) {
+        console.error(`Error reading from localStorage (${key}):`, error);
+        return null;
       }
-    } catch (error) {
-      console.error('Error loading settings from localStorage:', error);
-      showFeedback('Error loading saved settings', 'error');
+    },
+    setItem: (key: string, value: any): boolean => {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+      } catch (error) {
+        console.error(`Error writing to localStorage (${key}):`, error);
+        return false;
+      }
+    },
+    removeItem: (key: string): boolean => {
+      try {
+        localStorage.removeItem(key);
+        return true;
+      } catch (error) {
+        console.error(`Error removing from localStorage (${key}):`, error);
+        return false;
+      }
     }
+  };
+
+  // Load saved settings from localStorage on mount (async)
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Use Promise.all for concurrent loading
+        const [savedSettings, savedAISettings] = await Promise.all([
+          new Promise(resolve => {
+            setTimeout(() => resolve(safeLocalStorage.getItem('appSettings')), 0);
+          }),
+          new Promise(resolve => {
+            setTimeout(() => resolve(safeLocalStorage.getItem('aiSettings')), 0);
+          })
+        ]);
+
+        if (savedSettings && typeof savedSettings === 'object') {
+          setSettings(prev => ({ ...prev, ...savedSettings as any }));
+        }
+
+        if (savedAISettings && typeof savedAISettings === 'object') {
+          setAiSettings(prev => ({ ...prev, ...savedAISettings as any }));
+        }
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        showFeedback('Error loading saved settings', 'error');
+      } finally {
+        setIsLoading(false);
+        setIsInitialized(true);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (feedbackTimeoutRef.current) {
+        clearTimeout(feedbackTimeoutRef.current);
+      }
+      if (fontSizeTimeoutRef.current) {
+        clearTimeout(fontSizeTimeoutRef.current);
+      }
+    };
   }, []);
 
   const showFeedback = useCallback((message: string, type: 'success' | 'error') => {
+    // Clear existing timeout
+    if (feedbackTimeoutRef.current) {
+      clearTimeout(feedbackTimeoutRef.current);
+    }
+
     setFeedback({ message, type, visible: true });
-    setTimeout(() => {
+    
+    // Set new timeout
+    feedbackTimeoutRef.current = setTimeout(() => {
       setFeedback(prev => ({ ...prev, visible: false }));
     }, 3000);
   }, []);
 
+  // Debounced localStorage save
+  const debouncedSaveSettings = useMemo(
+    () => debounce((key: string, value: any) => {
+      safeLocalStorage.setItem(key, value);
+    }, 300),
+    []
+  );
+
   const handleSettingChange = useCallback((key: string, value: any) => {
     try {
-      const newSettings = { ...settings, [key]: value };
+      const newSettings = { ...memoizedSettings, [key]: value };
       setSettings(newSettings);
-      localStorage.setItem('appSettings', JSON.stringify(newSettings));
+      
+      // Debounced save to prevent blocking UI
+      debouncedSaveSettings('appSettings', newSettings);
       
       // Show feedback based on setting type
-      switch (key) {
-        case 'autoSave':
-          showFeedback(`Auto-save ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
-        case 'notifications':
-          showFeedback(`Notifications ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
-        case 'language':
-          showFeedback(`Language changed to ${value}`, 'success');
-          break;
-        case 'fontSize':
-          showFeedback(`Font size changed to ${value}`, 'success');
-          break;
-        case 'compactMode':
-          showFeedback(`Compact mode ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
-        case 'showSources':
-          showFeedback(`Source display ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
-        case 'enableMessageEditing':
-          showFeedback(`Message editing ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
-        case 'enableChatExport':
-          showFeedback(`Chat export ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
-        case 'enableChatImport':
-          showFeedback(`Chat import ${value ? 'enabled' : 'disabled'}`, 'success');
-          break;
+      const feedbackMessages: Record<string, string> = {
+        autoSave: `Auto-save ${value ? 'enabled' : 'disabled'}`,
+        notifications: `Notifications ${value ? 'enabled' : 'disabled'}`,
+        language: `Language changed to ${value}`,
+        fontSize: `Font size changed to ${value}`,
+        compactMode: `Compact mode ${value ? 'enabled' : 'disabled'}`,
+        showSources: `Source display ${value ? 'enabled' : 'disabled'}`,
+        enableMessageEditing: `Message editing ${value ? 'enabled' : 'disabled'}`,
+        enableChatExport: `Chat export ${value ? 'enabled' : 'disabled'}`,
+        enableChatImport: `Chat import ${value ? 'enabled' : 'disabled'}`
+      };
+
+      const message = feedbackMessages[key];
+      if (message) {
+        showFeedback(message, 'success');
       }
     } catch (error) {
       console.error('Error saving setting:', error);
       showFeedback('Error saving setting', 'error');
     }
-  }, [settings, showFeedback]);
+  }, [memoizedSettings, debouncedSaveSettings, showFeedback]);
 
   const handleAISettingChange = useCallback((key: string, value: any) => {
     try {
-      const newAISettings = { ...aiSettings, [key]: value };
+      const newAISettings = { ...memoizedAISettings, [key]: value };
       setAiSettings(newAISettings);
-      localStorage.setItem('aiSettings', JSON.stringify(newAISettings));
+      
+      // Debounced save
+      debouncedSaveSettings('aiSettings', newAISettings);
       
       showFeedback(`AI setting updated: ${key}`, 'success');
     } catch (error) {
       console.error('Error saving AI setting:', error);
       showFeedback('Error saving AI setting', 'error');
     }
-  }, [aiSettings, showFeedback]);
+  }, [memoizedAISettings, debouncedSaveSettings, showFeedback]);
 
   const handleThemeChange = useCallback((newTheme: 'light' | 'dark') => {
     try {
@@ -142,9 +224,12 @@ export default function Settings() {
     }
   }, [setTheme, showFeedback]);
 
-  const resetSettings = useCallback(() => {
+  const resetSettings = useCallback(async () => {
     try {
       setIsLoading(true);
+      
+      // Simulate async operation to prevent UI blocking
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       const defaultSettings = {
         autoSave: true,
@@ -157,8 +242,6 @@ export default function Settings() {
         enableChatExport: true,
         enableChatImport: true
       };
-      setSettings(defaultSettings);
-      localStorage.setItem('appSettings', JSON.stringify(defaultSettings));
       
       const defaultAISettings: AISettings = {
         defaultProvider: 'openai',
@@ -168,8 +251,25 @@ export default function Settings() {
         temperature: 0.7,
         searchWeb: true
       };
+
+      setSettings(defaultSettings);
       setAiSettings(defaultAISettings);
-      localStorage.setItem('aiSettings', JSON.stringify(defaultAISettings));
+      
+      // Save in background
+      Promise.all([
+        new Promise(resolve => {
+          setTimeout(() => {
+            safeLocalStorage.setItem('appSettings', defaultSettings);
+            resolve(true);
+          }, 0);
+        }),
+        new Promise(resolve => {
+          setTimeout(() => {
+            safeLocalStorage.setItem('aiSettings', defaultAISettings);
+            resolve(true);
+          }, 0);
+        })
+      ]);
       
       showFeedback('Settings reset to defaults', 'success');
     } catch (error) {
@@ -180,11 +280,16 @@ export default function Settings() {
     }
   }, [showFeedback]);
 
-  const exportSettings = useCallback(() => {
+  const exportSettings = useCallback(async () => {
     try {
+      setIsLoading(true);
+      
+      // Simulate async operation
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const exportData = {
-        settings,
-        aiSettings,
+        settings: memoizedSettings,
+        aiSettings: memoizedAISettings,
         exportDate: new Date().toISOString(),
         version: '1.0'
       };
@@ -197,86 +302,141 @@ export default function Settings() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      
+      // Cleanup URL after a delay
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       
       showFeedback('Settings exported successfully', 'success');
     } catch (error) {
       console.error('Error exporting settings:', error);
       showFeedback('Error exporting settings', 'error');
+    } finally {
+      setIsLoading(false);
     }
-  }, [settings, aiSettings, showFeedback]);
+  }, [memoizedSettings, memoizedAISettings, showFeedback]);
 
   const importSettings = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        setIsLoading(true);
+        
+        // Simulate async operation
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
         const importData = JSON.parse(e.target?.result as string);
+        
         if (importData.settings) {
           setSettings(importData.settings);
-          localStorage.setItem('appSettings', JSON.stringify(importData.settings));
+          // Save in background
+          setTimeout(() => {
+            safeLocalStorage.setItem('appSettings', importData.settings);
+          }, 0);
         }
+        
         if (importData.aiSettings) {
           setAiSettings(importData.aiSettings);
-          localStorage.setItem('aiSettings', JSON.stringify(importData.aiSettings));
+          // Save in background
+          setTimeout(() => {
+            safeLocalStorage.setItem('aiSettings', importData.aiSettings);
+          }, 0);
         }
+        
         showFeedback('Settings imported successfully', 'success');
       } catch (error) {
         console.error('Error importing settings:', error);
         showFeedback('Failed to import settings. Please check the file format.', 'error');
+      } finally {
+        setIsLoading(false);
       }
     };
-    reader.readAsText(file);
     
-    // Reset the input value to allow re-importing the same file
+    reader.readAsText(file);
     event.target.value = '';
   }, [showFeedback]);
 
-  const clearChatHistory = useCallback(() => {
+  const clearChatHistory = useCallback(async () => {
     if (window.confirm('Are you sure you want to clear all chat history? This action cannot be undone.')) {
       try {
-        localStorage.removeItem('chatSessions');
+        setIsLoading(true);
+        
+        // Simulate async operation
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        safeLocalStorage.removeItem('chatSessions');
         showFeedback('Chat history cleared', 'success');
       } catch (error) {
         console.error('Error clearing chat history:', error);
         showFeedback('Error clearing chat history', 'error');
+      } finally {
+        setIsLoading(false);
       }
     }
   }, [showFeedback]);
 
-  const clearUploadedFiles = useCallback(() => {
+  const clearUploadedFiles = useCallback(async () => {
     if (window.confirm('Are you sure you want to clear all uploaded files? This action cannot be undone.')) {
       try {
-        localStorage.removeItem('uploadedFiles');
+        setIsLoading(true);
+        
+        // Simulate async operation
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        safeLocalStorage.removeItem('uploadedFiles');
         showFeedback('Uploaded files cleared', 'success');
       } catch (error) {
         console.error('Error clearing uploaded files:', error);
         showFeedback('Error clearing uploaded files', 'error');
+      } finally {
+        setIsLoading(false);
       }
     }
   }, [showFeedback]);
 
-  // Apply font size to document
-  useEffect(() => {
-    try {
-      const root = document.documentElement;
-      switch (settings.fontSize) {
-        case 'small':
-          root.style.fontSize = '14px';
-          break;
-        case 'medium':
-          root.style.fontSize = '16px';
-          break;
-        case 'large':
-          root.style.fontSize = '18px';
-          break;
+  // Debounced font size application
+  const debouncedApplyFontSize = useMemo(
+    () => debounce((fontSize: string) => {
+      try {
+        const root = document.documentElement;
+        const sizes = {
+          small: '14px',
+          medium: '16px',
+          large: '18px'
+        };
+        
+        if (sizes[fontSize as keyof typeof sizes]) {
+          root.style.fontSize = sizes[fontSize as keyof typeof sizes];
+        }
+      } catch (error) {
+        console.error('Error applying font size:', error);
       }
-    } catch (error) {
-      console.error('Error applying font size:', error);
+    }, 200),
+    []
+  );
+
+  // Apply font size with debouncing
+  useEffect(() => {
+    if (isInitialized) {
+      debouncedApplyFontSize(settings.fontSize);
     }
-  }, [settings.fontSize]);
+  }, [settings.fontSize, isInitialized, debouncedApplyFontSize]);
+
+  // Don't render until initialized
+  if (!isInitialized) {
+    return (
+      <div className="settings-page">
+        <Navigation currentPage="settings" />
+        <div className="settings-container">
+          <div className="loading-overlay">
+            <div className="loading-spinner"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-page">
