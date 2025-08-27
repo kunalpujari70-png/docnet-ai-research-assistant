@@ -235,12 +235,19 @@ async function callOpenAIAPI(prompt: string, documents: any[] = [], webResults: 
     }
 
     systemMessage += `\n\n**Instructions for this response:**
-- If documents contain relevant information, base your answer primarily on that content
-- Reference specific document names and content when applicable
-- Use web search results to supplement or add current context
-- If no relevant documents found, use web search results and general knowledge
-- Always be clear about your sources (documents vs. web vs. general knowledge)
-- Ask follow-up questions if you need more context to provide a better answer`;
+- **PRIORITIZE DOCUMENTS**: If documents contain relevant information, base your answer primarily on that content
+- **REFERENCE SPECIFICALLY**: Always mention which document(s) you're referencing when using document content
+- **COMBINE SOURCES**: Use web search results to supplement document information with current context
+- **CLEAR SOURCING**: Always be explicit about your sources (documents vs. web vs. general knowledge)
+- **CONTEXT AWARENESS**: If you don't have enough context from documents, ask the user for more details
+- **FALLBACK STRATEGY**: If no relevant documents found, use web search results and clearly state this
+- **RESPONSE FORMAT**: Structure your response to clearly indicate what comes from documents vs. web search
+
+**Response Guidelines:**
+1. Start with document-based information if available
+2. Add web search context if relevant and enabled
+3. If insufficient document context, ask for clarification
+4. Always cite your sources clearly`;
 
     const messages: Array<{
       role: 'system' | 'user' | 'assistant';

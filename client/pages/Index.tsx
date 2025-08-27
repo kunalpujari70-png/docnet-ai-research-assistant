@@ -108,9 +108,22 @@ export default function Index() {
         }
       } catch (error) {
         console.error('Error loading chat sessions:', error);
+        // Clear corrupted data
+        localStorage.removeItem('chatSessions');
       }
     }
   }, []);
+
+  // Auto-save chat sessions whenever they change
+  useEffect(() => {
+    if (chatSessions.length > 0) {
+      try {
+        localStorage.setItem('chatSessions', JSON.stringify(chatSessions));
+      } catch (error) {
+        console.error('Error saving chat sessions:', error);
+      }
+    }
+  }, [chatSessions]);
 
   // Save chat sessions to localStorage
   useEffect(() => {
@@ -282,21 +295,35 @@ export default function Index() {
         content: msg.content
       }));
 
-      // Use the production API service
+      // Enhanced request with better context handling
       const request: ChatRequest = {
         message: inputValue,
         documents: documentContext,
         history: chatHistory,
         aiProvider: selectedAIProvider as 'openai' | 'gemini',
-        searchWeb
+        searchWeb: searchWeb || documentContext.length === 0 // Always search web if no documents
       };
 
       const response: ChatResponse = await apiService.sendChatMessage(request);
 
+      // Enhanced response handling with better context awareness
+      let enhancedResponse = response.response;
+      
+      // Add context information to the response
+      if (documentContext.length > 0 && response.documentsUsed && response.documentsUsed.length > 0) {
+        enhancedResponse = `📄 **Based on your uploaded documents and web search:**\n\n${response.response}`;
+      } else if (documentContext.length > 0 && searchWeb) {
+        enhancedResponse = `🌐 **I couldn't find specific information in your uploaded documents, but here's what I found on the internet:**\n\n${response.response}`;
+      } else if (documentContext.length === 0 && searchWeb) {
+        enhancedResponse = `🌐 **Based on web search:**\n\n${response.response}`;
+      } else if (documentContext.length > 0 && !searchWeb) {
+        enhancedResponse = `📄 **Based on your uploaded documents:**\n\n${response.response}`;
+      }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.response,
+        content: enhancedResponse,
         timestamp: new Date(),
         responseTime: response.responseTime,
         sources: response.sources
@@ -323,13 +350,27 @@ export default function Index() {
     } catch (error) {
       console.error('Chat error:', error);
       
-      // Fallback response
-      const fallbackResponse = `I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.`;
+      let errorContent = 'I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.';
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('API key') || error.message.includes('authentication')) {
+          errorContent = '⚠️ **Authentication Error:** Please check your API keys in Settings. The AI service requires valid API credentials to function.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorContent = '🌐 **Network Error:** Unable to connect to the AI service. Please check your internet connection and try again.';
+        } else if (error.message.includes('rate limit')) {
+          errorContent = '⏱️ **Rate Limit Exceeded:** Too many requests. Please wait a moment and try again.';
+        } else if (error.message.includes('document') || error.message.includes('file')) {
+          errorContent = '📄 **Document Processing Error:** There was an issue processing your uploaded documents. Please try re-uploading them.';
+        } else if (error.message.includes('context') || error.message.includes('insufficient')) {
+          errorContent = '🤔 **Insufficient Context:** I don\'t have enough information from your uploaded documents to answer this question fully. Could you provide more details or upload additional relevant documents?';
+        }
+      }
       
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: fallbackResponse,
+        content: errorContent,
         timestamp: new Date(),
         responseTime: 0,
       };
@@ -350,6 +391,24 @@ export default function Index() {
               }
             : session
         ));
+      }
+      
+      // Save chat session after error
+      try {
+        const updatedSessions = chatSessions.map(session => 
+          session.id === currentSessionId 
+            ? { 
+                ...session, 
+                messages: finalMessages,
+                title: finalMessages[0]?.content.substring(0, 50) + '...' || 'New Chat',
+                documentCount: userFiles.length,
+                lastUpdated: new Date()
+              }
+            : session
+        );
+        localStorage.setItem('chatSessions', JSON.stringify(updatedSessions));
+      } catch (saveError) {
+        console.error('Error saving chat session:', saveError);
       }
     } finally {
       setIsLoading(false);
@@ -423,7 +482,7 @@ export default function Index() {
         <aside className={`chatbot-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
           <div className="sidebar-header">
             <div className="sidebar-brand">
-              <h2>DocNet</h2>
+              <h2>Chat History</h2>
             </div>
             <button 
               className="sidebar-toggle"
@@ -489,9 +548,6 @@ export default function Index() {
                 </button>
                 <button className="nav-btn" onClick={() => window.location.href = '/settings'}>
                   ⚙️ Settings
-                </button>
-                <button className="nav-btn logout-btn" onClick={handleLogout}>
-                  🚪 Sign Out
                 </button>
               </div>
             )}
@@ -562,14 +618,6 @@ export default function Index() {
                 />
                 <span>🌐 Web Search</span>
               </label>
-              {user && (
-                <div className="user-info">
-                  <span>Welcome, {user.email}</span>
-                  <button onClick={handleLogout}>
-                    Sign Out
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
@@ -680,15 +728,23 @@ export default function Index() {
                                   setEditingMessageId(message.id);
                                   setEditValue(message.content);
                                 }}
-                                className="action-btn"
+                                className="action-btn edit-btn"
+                                title="Edit message"
                               >
-                                ✏️
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+                                  <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M18.5 2.50023C18.8978 2.10297 19.4374 1.87891 20 1.87891C20.5626 1.87891 21.1022 2.10297 21.5 2.50023C21.8978 2.89749 22.1218 3.43705 22.1218 3.99973C22.1218 4.56241 21.8978 5.10197 21.5 5.49923L12 15.0002L8 16.0002L9 12.0002L18.5 2.50023Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
                               </button>
                               <button 
                                 onClick={() => deleteMessage(message.id)}
-                                className="action-btn delete"
+                                className="action-btn delete-btn"
+                                title="Delete message"
                               >
-                                🗑️
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+                                  <path d="M3 6H5H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
                               </button>
                             </div>
                           )}

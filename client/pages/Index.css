@@ -583,28 +583,45 @@
 .message-actions {
   display: flex;
   gap: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .action-btn {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(255, 255, 255, 0.8);
-  padding: 0.25rem;
-  border-radius: 0.25rem;
+  padding: 0.5rem;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
 }
 
 .action-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: white;
+  transform: translateY(-1px);
 }
 
-.action-btn.delete:hover {
+.action-btn.edit-btn:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+}
+
+.action-btn.delete-btn:hover {
   background: rgba(239, 68, 68, 0.2);
   border-color: rgba(239, 68, 68, 0.3);
   color: #ef4444;
+}
+
+.action-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .sources-toggle {
