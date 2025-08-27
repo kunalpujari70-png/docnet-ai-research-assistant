@@ -39,55 +39,76 @@ function getOpenAIClient(): OpenAI {
   return openai;
 }
 
-// Web search function using DuckDuckGo
+// Web search function using DuckDuckGo with timeout protection
 async function performWebSearch(query: string): Promise<any[]> {
   try {
     console.log(`Web search requested for: ${query}`);
     
-    const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    // Add timeout to web search to prevent hanging
+    const timeoutPromise = new Promise<any[]>((_, reject) => {
+      setTimeout(() => reject(new Error('Web search timeout')), 15000); // 15 second timeout
+    });
     
-    const response = await fetch(searchUrl);
-    const data = await response.json();
+    const searchPromise = (async () => {
+      const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+      
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+      
+      const results: any[] = [];
+      
+      if (data.Abstract) {
+        results.push({
+          title: data.Heading || 'Instant Answer',
+          snippet: data.Abstract,
+          url: data.AbstractURL || '',
+          source: 'DuckDuckGo Instant Answer'
+        });
+      }
+      
+      if (data.RelatedTopics && data.RelatedTopics.length > 0) {
+        data.RelatedTopics.slice(0, 3).forEach((topic: any) => {
+          if (topic.Text) {
+            results.push({
+              title: topic.Text.split(' - ')[0] || 'Related Topic',
+              snippet: topic.Text,
+              url: topic.FirstURL || '',
+              source: 'DuckDuckGo Related Topics'
+            });
+          }
+        });
+      }
+      
+      console.log(`Found ${results.length} web search results`);
+      return results;
+    })();
     
-    const results: any[] = [];
-    
-    if (data.Abstract) {
-      results.push({
-        title: data.Heading || 'Instant Answer',
-        snippet: data.Abstract,
-        url: data.AbstractURL || '',
-        source: 'DuckDuckGo Instant Answer'
-      });
-    }
-    
-    if (data.RelatedTopics && data.RelatedTopics.length > 0) {
-      data.RelatedTopics.slice(0, 3).forEach((topic: any) => {
-        if (topic.Text) {
-          results.push({
-            title: topic.Text.split(' - ')[0] || 'Related Topic',
-            snippet: topic.Text,
-            url: topic.FirstURL || '',
-            source: 'DuckDuckGo Related Topics'
-          });
-        }
-      });
-    }
-    
-    console.log(`Found ${results.length} web search results`);
+    const results = await Promise.race([searchPromise, timeoutPromise]);
     return results;
   } catch (error) {
     console.error('Web search error:', error);
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.log('Web search timed out, returning empty results');
+    }
     return [];
   }
 }
 
-// Optimized document analysis function with async processing and performance improvements
+// Ultra-optimized document analysis with micro-tasking and performance monitoring
 async function analyzeDocumentsForRelevance(query: string, documents: any[]): Promise<any[]> {
+  const startTime = performance.now();
   const queryLower = query.toLowerCase();
   const queryWords = queryLower.split(/\s+/).filter(word => word.length > 1);
   
   console.log(`Analyzing documents for query: "${query}"`);
   console.log(`Query words: ${queryWords.join(', ')}`);
+  console.log(`Total documents to process: ${documents.length}`);
+  
+  // Early exit for empty documents
+  if (documents.length === 0) {
+    console.log('No documents to analyze');
+    return [];
+  }
   
   // Pre-compile semantic keywords for better performance
   const semanticKeywords = new Set([
@@ -98,19 +119,18 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
     'history', 'historical', 'ancient', 'temple', 'religious', 'sacred', 'pilgrimage'
   ]);
   
-  // Process documents in chunks to avoid blocking
-  const chunkSize = 3;
+  // Micro-task processing with smaller chunks and more frequent yields
+  const microChunkSize = 1; // Process one document at a time
   const results = [];
+  let processedCount = 0;
   
-  for (let i = 0; i < documents.length; i += chunkSize) {
-    const chunk = documents.slice(i, i + chunkSize);
+  for (let i = 0; i < documents.length; i += microChunkSize) {
+    const chunk = documents.slice(i, i + microChunkSize);
     
-    // Process chunk asynchronously
-    const chunkResults = await Promise.all(chunk.map(async (doc, index) => {
-      // Yield control to prevent blocking
-      if (index % 2 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
+    // Process each document individually with immediate yielding
+    for (const doc of chunk) {
+      // Yield control after every document to prevent blocking
+      await new Promise(resolve => setTimeout(resolve, 0));
       
       const contentLower = doc.content.toLowerCase();
       const summaryLower = doc.summary.toLowerCase();
@@ -126,7 +146,7 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
         partialMatches: 0
       };
       
-      // Optimized word matching with early exit
+      // Optimized word matching with early exit for high-scoring documents
       for (const word of queryWords) {
         if (contentLower.includes(word)) {
           relevanceScore += 3;
@@ -140,9 +160,14 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
           relevanceScore += 5;
           matchDetails.nameMatches++;
         }
+        
+        // Early exit if document is already highly relevant
+        if (relevanceScore >= 25) {
+          break;
+        }
       }
       
-      // Check for exact phrase matches
+      // Check for exact phrase matches (highest priority)
       if (contentLower.includes(queryLower)) {
         relevanceScore += 20;
         matchDetails.exactMatches++;
@@ -181,19 +206,27 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
         confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
       };
       
-      console.log(`Document "${doc.name}": score=${relevanceScore}, matches=${JSON.stringify(matchDetails)}, relevant=${result.isRelevant}`);
+      results.push(result);
+      processedCount++;
       
-      return result;
-    }));
-    
-    results.push(...chunkResults);
+      // Log progress every 5 documents
+      if (processedCount % 5 === 0) {
+        console.log(`Processed ${processedCount}/${documents.length} documents...`);
+      }
+    }
   }
   
   const relevantDocs = results.filter(doc => doc.isRelevant)
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
     .slice(0, 5);
   
+  const endTime = performance.now();
+  const processingTime = endTime - startTime;
+  
+  console.log(`Document analysis completed in ${processingTime.toFixed(2)}ms`);
   console.log(`Found ${relevantDocs.length} relevant documents out of ${documents.length} total`);
+  console.log(`Processing rate: ${(documents.length / (processingTime / 1000)).toFixed(2)} documents/second`);
+  
   return relevantDocs;
 }
 

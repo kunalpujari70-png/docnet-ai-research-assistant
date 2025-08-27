@@ -55,6 +55,8 @@ export default function Index() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState<string>('');
+  const [processingTime, setProcessingTime] = useState<number>(0);
   const [userFiles, setUserFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -297,8 +299,11 @@ export default function Index() {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    const startTime = Date.now();
     setInputValue('');
     setIsLoading(true);
+    setLoadingStage('Preparing request...');
+    setProcessingTime(0);
 
     // Add a small delay to prevent UI blocking and show loading state
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -319,6 +324,8 @@ export default function Index() {
         content: msg.content
       }));
 
+      setLoadingStage('Analyzing documents...');
+      
       // Enhanced request with better context handling
       const request: ChatRequest = {
         message: inputValue,
@@ -328,6 +335,8 @@ export default function Index() {
         searchWeb: searchWeb || documentContext.length === 0 // Always search web if no documents
       };
 
+      setLoadingStage('Searching for information...');
+      
       // Add timeout to prevent hanging requests
       const timeoutPromise = new Promise<ChatResponse>((_, reject) => {
         setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
@@ -453,9 +462,13 @@ export default function Index() {
       } catch (saveError) {
         console.error('Error saving chat session:', saveError);
       }
-    } finally {
-      setIsLoading(false);
-    }
+          } finally {
+        const endTime = Date.now();
+        const totalTime = endTime - startTime;
+        setProcessingTime(totalTime);
+        setIsLoading(false);
+        setLoadingStage('');
+      }
   }, [inputValue, isLoading, userFiles, messages, currentSessionId, selectedAIProvider, searchWeb]);
 
   const exportChatSession = useCallback((sessionId: string) => {
@@ -811,7 +824,7 @@ export default function Index() {
               <div className="message assistant">
                 <div className="message-content">
                   <div className="loading-indicator">
-                    <span>AI is thinking</span>
+                    <span>{loadingStage || 'AI is thinking...'}</span>
                     <div className="typing-dots">
                       <span></span>
                       <span></span>
@@ -819,6 +832,12 @@ export default function Index() {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+            
+            {processingTime > 0 && !isLoading && (
+              <div className="performance-indicator">
+                <span>⏱️ Processed in {(processingTime / 1000).toFixed(1)}s</span>
               </div>
             )}
             
