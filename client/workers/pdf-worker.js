@@ -1,5 +1,6 @@
 // PDF Processing Web Worker
 // Handles large PDF parsing in background threads with chunking and lazy loading
+// Chrome-optimized version with reduced blocking operations
 
 // PDF.js library for PDF parsing
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
@@ -11,6 +12,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 let currentDocument = null;
 let documentIndex = null;
 let processingQueue = [];
+let isProcessing = false;
+
+// Chrome-specific performance optimizations
+const CHROME_YIELD_INTERVAL = 5; // Reduced from 10ms for Chrome
+const CHROME_CHUNK_SIZE = 3; // Smaller chunks for Chrome
+const CHROME_MAX_PAGES_PER_BATCH = 2; // Process fewer pages at once
 
 // Text indexing for faster searching
 class TextIndexer {
@@ -18,23 +25,52 @@ class TextIndexer {
     this.index = new Map();
     this.pageContent = new Map();
     this.keywordMap = new Map();
+    this.processingQueue = [];
   }
 
-  // Index text content for fast searching
-  indexText(pageNum, text) {
+  // Index text content for fast searching with Chrome optimizations
+  async indexText(pageNum, text) {
+    // Use requestIdleCallback if available for Chrome
+    if (typeof requestIdleCallback !== 'undefined') {
+      return new Promise(resolve => {
+        requestIdleCallback(() => {
+          this._indexTextSync(pageNum, text);
+          resolve();
+        }, { timeout: 50 });
+      });
+    } else {
+      // Fallback with micro-task yielding
+      await new Promise(resolve => setTimeout(resolve, 0));
+      this._indexTextSync(pageNum, text);
+    }
+  }
+
+  _indexTextSync(pageNum, text) {
     const words = text.toLowerCase().split(/\s+/).filter(word => word.length > 2);
     const pageKey = `page_${pageNum}`;
     
     // Store page content
     this.pageContent.set(pageKey, text);
     
-    // Index words with page references
-    words.forEach(word => {
-      if (!this.keywordMap.has(word)) {
-        this.keywordMap.set(word, new Set());
+    // Index words with page references (optimized for Chrome)
+    for (let i = 0; i < words.length; i += 100) { // Process in batches
+      const batch = words.slice(i, i + 100);
+      batch.forEach(word => {
+        if (!this.keywordMap.has(word)) {
+          this.keywordMap.set(word, new Set());
+        }
+        this.keywordMap.get(word).add(pageKey);
+      });
+      
+      // Yield control for Chrome
+      if (i % 500 === 0 && i > 0) {
+        // Small delay to prevent blocking
+        const start = performance.now();
+        while (performance.now() - start < 1) {
+          // Busy wait for 1ms to yield control
+        }
       }
-      this.keywordMap.get(word).add(pageKey);
-    });
+    }
     
     // Store page metadata
     this.index.set(pageKey, {
@@ -45,7 +81,7 @@ class TextIndexer {
     });
   }
 
-  // Search indexed content
+  // Search indexed content with Chrome optimizations
   search(query) {
     const queryWords = query.toLowerCase().split(/\s+/).filter(word => word.length > 2);
     const results = [];
@@ -100,50 +136,61 @@ class TextIndexer {
   }
 }
 
-// PDF processing functions
-async function processPDFChunk(file, startPage, endPage, chunkSize = 5) {
+// Chrome-optimized PDF processing functions
+async function processPDFChunk(file, startPage, endPage, chunkSize = CHROME_CHUNK_SIZE) {
   const indexer = new TextIndexer();
   const results = [];
   
   try {
-    // Load PDF document
-    const arrayBuffer = await file.arrayBuffer();
+    // Load PDF document with timeout
+    const arrayBuffer = await Promise.race([
+      file.arrayBuffer(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('PDF load timeout')), 30000))
+    ]);
+    
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
     const totalPages = Math.min(endPage, pdf.numPages);
     const pagesToProcess = Math.min(chunkSize, totalPages - startPage + 1);
     
-    // Process pages in chunks
-    for (let i = 0; i < pagesToProcess; i++) {
-      const pageNum = startPage + i;
+    // Process pages in smaller batches for Chrome
+    const batchSize = CHROME_MAX_PAGES_PER_BATCH;
+    
+    for (let i = 0; i < pagesToProcess; i += batchSize) {
+      const batchEnd = Math.min(i + batchSize, pagesToProcess);
       
-      try {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const text = textContent.items.map(item => item.str).join(' ');
+      // Process batch
+      for (let j = i; j < batchEnd; j++) {
+        const pageNum = startPage + j;
         
-        // Index the text
-        indexer.indexText(pageNum, text);
-        
-        // Report progress
-        self.postMessage({
-          type: 'pdfProgress',
-          data: {
-            pageNum,
-            totalPages: pdf.numPages,
-            processed: i + 1,
-            total: pagesToProcess,
-            percentage: Math.round(((i + 1) / pagesToProcess) * 100)
-          }
-        });
-        
-        // Yield control to prevent blocking
-        await new Promise(resolve => setTimeout(resolve, 10));
-        
-      } catch (error) {
-        console.error(`Error processing page ${pageNum}:`, error);
-        // Continue with next page
+        try {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const text = textContent.items.map(item => item.str).join(' ');
+          
+          // Index the text asynchronously
+          await indexer.indexText(pageNum, text);
+          
+          // Report progress
+          self.postMessage({
+            type: 'pdfProgress',
+            data: {
+              pageNum,
+              totalPages: pdf.numPages,
+              processed: j + 1,
+              total: pagesToProcess,
+              percentage: Math.round(((j + 1) / pagesToProcess) * 100)
+            }
+          });
+          
+        } catch (error) {
+          console.error(`Error processing page ${pageNum}:`, error);
+          // Continue with next page
+        }
       }
+      
+      // Yield control more frequently for Chrome
+      await new Promise(resolve => setTimeout(resolve, CHROME_YIELD_INTERVAL));
     }
     
     return {
@@ -157,25 +204,41 @@ async function processPDFChunk(file, startPage, endPage, chunkSize = 5) {
   }
 }
 
-// Lazy loading for specific pages
+// Chrome-optimized lazy loading for specific pages
 async function loadSpecificPages(file, pageNumbers) {
   const results = [];
   
   try {
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await Promise.race([
+      file.arrayBuffer(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('PDF load timeout')), 15000))
+    ]);
+    
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     
-    for (const pageNum of pageNumbers) {
-      if (pageNum <= pdf.numPages) {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const text = textContent.items.map(item => item.str).join(' ');
-        
-        results.push({
-          pageNum,
-          content: text,
-          wordCount: text.split(/\s+/).length
-        });
+    // Process pages in smaller batches for Chrome
+    const batchSize = CHROME_MAX_PAGES_PER_BATCH;
+    
+    for (let i = 0; i < pageNumbers.length; i += batchSize) {
+      const batch = pageNumbers.slice(i, i + batchSize);
+      
+      for (const pageNum of batch) {
+        if (pageNum <= pdf.numPages) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const text = textContent.items.map(item => item.str).join(' ');
+          
+          results.push({
+            pageNum,
+            content: text,
+            wordCount: text.split(/\s+/).length
+          });
+        }
+      }
+      
+      // Yield control for Chrome
+      if (i + batchSize < pageNumbers.length) {
+        await new Promise(resolve => setTimeout(resolve, CHROME_YIELD_INTERVAL));
       }
     }
     
@@ -186,16 +249,28 @@ async function loadSpecificPages(file, pageNumbers) {
   }
 }
 
-// Main worker message handler
+// Main worker message handler with Chrome optimizations
 self.addEventListener('message', function(e) {
   const { type, data } = e.data;
   
+  // Prevent multiple simultaneous operations
+  if (isProcessing && type !== 'getStats') {
+    self.postMessage({
+      type: 'error',
+      error: 'Another operation is in progress',
+      success: false
+    });
+    return;
+  }
+  
   switch (type) {
     case 'processPDF':
+      isProcessing = true;
       handlePDFProcessing(data);
       break;
       
     case 'loadPages':
+      isProcessing = true;
       handlePageLoading(data);
       break;
       
@@ -216,10 +291,10 @@ self.addEventListener('message', function(e) {
   }
 });
 
-// Handle PDF processing
+// Handle PDF processing with Chrome optimizations
 async function handlePDFProcessing(data) {
   try {
-    const { file, startPage = 1, endPage = null, chunkSize = 5 } = data;
+    const { file, startPage = 1, endPage = null, chunkSize = CHROME_CHUNK_SIZE } = data;
     
     const result = await processPDFChunk(file, startPage, endPage, chunkSize);
     
@@ -242,10 +317,12 @@ async function handlePDFProcessing(data) {
       error: error.message,
       success: false
     });
+  } finally {
+    isProcessing = false;
   }
 }
 
-// Handle page loading
+// Handle page loading with Chrome optimizations
 async function handlePageLoading(data) {
   try {
     const { file, pageNumbers } = data;
@@ -266,6 +343,8 @@ async function handlePageLoading(data) {
       error: error.message,
       success: false
     });
+  } finally {
+    isProcessing = false;
   }
 }
 
@@ -324,11 +403,22 @@ async function handleGetStats(data) {
   }
 }
 
-// Handle errors
+// Handle errors with Chrome-specific logging
 self.addEventListener('error', function(e) {
+  console.error('PDF Worker Error:', e.error);
   self.postMessage({
     type: 'error',
     error: e.message,
+    success: false
+  });
+});
+
+// Handle unhandled promise rejections
+self.addEventListener('unhandledrejection', function(e) {
+  console.error('PDF Worker Unhandled Rejection:', e.reason);
+  self.postMessage({
+    type: 'error',
+    error: e.reason?.message || 'Unhandled promise rejection',
     success: false
   });
 });

@@ -1014,6 +1014,355 @@
   }
 }
 
+/* Chrome-specific performance optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .chat-container {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .chat-messages {
+    -webkit-overflow-scrolling: touch;
+    -webkit-transform: translateZ(0);
+    will-change: scroll-position;
+  }
+  
+  .message {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .loading-indicator {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .progress-bar {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .chat-input-form {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .input-container {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .send-btn {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .chat-sidebar {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .chat-session {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .document-stats {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .stats-grid {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .stat-item {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* Chrome-specific animation optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .spinner {
+    -webkit-animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite;
+  }
+  
+  .upload-spinner {
+    -webkit-animation: spin 1s linear infinite;
+    animation: spin 1s linear infinite;
+  }
+  
+  .progress-fill {
+    -webkit-animation: progress-pulse 2s ease-in-out infinite;
+    animation: progress-pulse 2s ease-in-out infinite;
+  }
+}
+
+/* Chrome-specific scrollbar optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .chat-messages::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .chat-messages::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+  }
+  
+  .chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+  }
+  
+  .chat-messages::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.5);
+  }
+  
+  .chat-sessions::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .chat-sessions::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 3px;
+  }
+  
+  .chat-sessions::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+  }
+  
+  .chat-sessions::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Chrome-specific text rendering optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .message-text {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  .session-title {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  .stat-label,
+  .stat-value {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* Chrome-specific performance indicator */
+.performance-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.chrome-optimized {
+  background: #10b981;
+  color: white;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* Chrome-specific loading optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .loading-message {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .loading-indicator {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+  
+  .loading-text {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* Chrome-specific button optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .send-btn,
+  .upload-btn,
+  .clear-btn,
+  .new-chat-btn,
+  .edit-btn,
+  .delete-btn,
+  .export-btn {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  .send-btn:active,
+  .upload-btn:active,
+  .clear-btn:active,
+  .new-chat-btn:active,
+  .edit-btn:active,
+  .delete-btn:active,
+  .export-btn:active {
+    -webkit-transform: translateZ(0) scale(0.95);
+    transform: translateZ(0) scale(0.95);
+  }
+}
+
+/* Chrome-specific input optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .input-container textarea {
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+    -webkit-appearance: none;
+    -webkit-border-radius: 0;
+  }
+  
+  .input-container textarea:focus {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
+
+/* Chrome-specific select optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .ai-provider-selector select {
+    -webkit-appearance: none;
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* Chrome-specific checkbox optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .checkbox-label input[type="checkbox"] {
+    -webkit-appearance: none;
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* Chrome-specific memory optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .chat-container * {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+  
+  .chat-container *:hover {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+  }
+}
+
+/* Chrome-specific GPU acceleration for animations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  @keyframes spin {
+    0% { -webkit-transform: translateZ(0) rotate(0deg); transform: translateZ(0) rotate(0deg); }
+    100% { -webkit-transform: translateZ(0) rotate(360deg); transform: translateZ(0) rotate(360deg); }
+  }
+  
+  @keyframes progress-pulse {
+    0%, 100% { -webkit-transform: translateZ(0) scaleX(1); transform: translateZ(0) scaleX(1); }
+    50% { -webkit-transform: translateZ(0) scaleX(1.02); transform: translateZ(0) scaleX(1.02); }
+  }
+}
+
+/* Chrome-specific responsive optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 0) and (max-width: 768px) {
+  .chat-container {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .chat-messages {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .chat-sessions {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Chrome-specific high DPI optimizations */
+@media screen and (-webkit-min-device-pixel-ratio: 2) {
+  .message svg,
+  .send-btn svg,
+  .upload-btn svg,
+  .clear-btn svg,
+  .new-chat-btn svg,
+  .edit-btn svg,
+  .delete-btn svg,
+  .export-btn svg {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
+    will-change: transform;
+  }
+}
+
+/* Chrome-specific memory leak prevention */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  .chat-container {
+    contain: layout style paint;
+  }
+  
+  .chat-messages {
+    contain: layout style paint;
+  }
+  
+  .chat-sidebar {
+    contain: layout style paint;
+  }
+  
+  .message {
+    contain: layout style paint;
+  }
+  
+  .chat-session {
+    contain: layout style paint;
+  }
+}
+
 
 
 

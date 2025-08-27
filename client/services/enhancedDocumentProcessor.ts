@@ -1,5 +1,6 @@
 // Enhanced Document Processing Service
 // Handles large documents with Web Workers, lazy loading, and text indexing
+// Chrome-optimized version with reduced timeouts and better error handling
 
 interface DocumentStats {
   totalPages: number;
@@ -31,6 +32,17 @@ class EnhancedDocumentProcessor {
   private isInitialized = false;
   private documentCache = new Map<string, any>();
   private processingQueue = new Map<string, Promise<any>>();
+  private workerErrors = 0;
+  private maxWorkerErrors = 3;
+
+  // Chrome-specific timeouts (reduced for better responsiveness)
+  private readonly CHROME_TIMEOUTS = {
+    PDF_PROCESSING: 60000, // 1 minute (reduced from 2 minutes)
+    PAGE_LOADING: 15000,   // 15 seconds (reduced from 30 seconds)
+    SEARCH: 10000,         // 10 seconds (reduced from 15 seconds)
+    STATS: 5000,           // 5 seconds (reduced from 10 seconds)
+    DOCUMENT_PROCESSING: 30000 // 30 seconds (reduced from 60 seconds)
+  };
 
   constructor() {
     this.initWorkers();
@@ -45,14 +57,19 @@ class EnhancedDocumentProcessor {
       this.documentWorker = new Worker('/client/workers/document-worker.js');
       
       this.isInitialized = true;
+      this.workerErrors = 0;
       
-      // Handle worker errors
+      // Handle worker errors with Chrome-specific logging
       this.pdfWorker.onerror = (error) => {
         console.error('PDF worker error:', error);
+        this.workerErrors++;
+        this.handleWorkerError('PDF');
       };
       
       this.documentWorker.onerror = (error) => {
         console.error('Document worker error:', error);
+        this.workerErrors++;
+        this.handleWorkerError('Document');
       };
       
     } catch (error) {
@@ -61,11 +78,18 @@ class EnhancedDocumentProcessor {
     }
   }
 
-  // Process large PDF documents with chunking and lazy loading
+  private handleWorkerError(workerType: string) {
+    if (this.workerErrors >= this.maxWorkerErrors) {
+      console.warn(`${workerType} worker has encountered too many errors, falling back to synchronous processing`);
+      this.isInitialized = false;
+    }
+  }
+
+  // Process large PDF documents with Chrome-optimized chunking and lazy loading
   async processLargePDF(
     file: File, 
     onProgress?: (progress: ProcessingProgress) => void,
-    chunkSize: number = 5
+    chunkSize: number = 3 // Reduced chunk size for Chrome
   ): Promise<{ stats: DocumentStats; success: boolean }> {
     if (!this.isInitialized || !this.pdfWorker) {
       console.warn('PDF Worker not available, falling back to basic processing');
@@ -81,8 +105,8 @@ class EnhancedDocumentProcessor {
 
     const processingPromise = new Promise<{ stats: DocumentStats; success: boolean }>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('PDF processing timeout'));
-      }, 120000); // 2 minute timeout for large documents
+        reject(new Error('PDF processing timeout - Chrome optimization'));
+      }, this.CHROME_TIMEOUTS.PDF_PROCESSING);
 
       const messageHandler = (event: MessageEvent) => {
         const { type, data, success, error } = event.data;
@@ -125,12 +149,16 @@ class EnhancedDocumentProcessor {
       const result = await processingPromise;
       this.documentCache.set(fileId, result);
       return result;
+    } catch (error) {
+      console.error('PDF processing failed:', error);
+      // Fallback to basic processing
+      return this.processPDFFallback(file);
     } finally {
       this.processingQueue.delete(fileId);
     }
   }
 
-  // Lazy load specific pages from a large document
+  // Chrome-optimized lazy load specific pages from a large document
   async loadSpecificPages(
     file: File, 
     pageNumbers: number[],
@@ -142,8 +170,8 @@ class EnhancedDocumentProcessor {
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Page loading timeout'));
-      }, 30000);
+        reject(new Error('Page loading timeout - Chrome optimization'));
+      }, this.CHROME_TIMEOUTS.PAGE_LOADING);
 
       const messageHandler = (event: MessageEvent) => {
         const { type, data, success, error } = event.data;
@@ -175,7 +203,7 @@ class EnhancedDocumentProcessor {
     });
   }
 
-  // Search indexed document content
+  // Chrome-optimized search indexed document content
   async searchIndexedDocument(
     file: File, 
     query: string,
@@ -187,8 +215,8 @@ class EnhancedDocumentProcessor {
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Search timeout'));
-      }, 15000);
+        reject(new Error('Search timeout - Chrome optimization'));
+      }, this.CHROME_TIMEOUTS.SEARCH);
 
       const messageHandler = (event: MessageEvent) => {
         const { type, data, success, error } = event.data;
@@ -220,7 +248,7 @@ class EnhancedDocumentProcessor {
     });
   }
 
-  // Get document statistics
+  // Chrome-optimized get document statistics
   async getDocumentStats(file: File): Promise<DocumentStats> {
     if (!this.isInitialized || !this.pdfWorker) {
       return this.getStatsFallback(file);
@@ -228,8 +256,8 @@ class EnhancedDocumentProcessor {
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Stats retrieval timeout'));
-      }, 10000);
+        reject(new Error('Stats retrieval timeout - Chrome optimization'));
+      }, this.CHROME_TIMEOUTS.STATS);
 
       const messageHandler = (event: MessageEvent) => {
         const { type, data, success, error } = event.data;
@@ -261,7 +289,7 @@ class EnhancedDocumentProcessor {
     });
   }
 
-  // Enhanced document processing with smart chunking
+  // Chrome-optimized enhanced document processing with smart chunking
   async processDocumentsEnhanced(
     documents: any[], 
     query: string, 
@@ -273,8 +301,8 @@ class EnhancedDocumentProcessor {
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Document processing timeout'));
-      }, 60000); // 1 minute timeout
+        reject(new Error('Document processing timeout - Chrome optimization'));
+      }, this.CHROME_TIMEOUTS.DOCUMENT_PROCESSING);
 
       const messageHandler = (event: MessageEvent) => {
         const { type, data, success, error } = event.data;
@@ -312,7 +340,7 @@ class EnhancedDocumentProcessor {
     });
   }
 
-  // Fallback methods for when workers are not available
+  // Enhanced fallback methods for when workers are not available
   private async processPDFFallback(file: File): Promise<{ stats: DocumentStats; success: boolean }> {
     // Basic PDF processing without Web Workers
     return {
@@ -395,6 +423,14 @@ class EnhancedDocumentProcessor {
 
   getCacheSize(): number {
     return this.documentCache.size;
+  }
+
+  // Reset worker errors and reinitialize if needed
+  resetWorkers() {
+    this.workerErrors = 0;
+    if (!this.isInitialized) {
+      this.initWorkers();
+    }
   }
 
   // Cleanup

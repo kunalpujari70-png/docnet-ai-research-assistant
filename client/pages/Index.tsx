@@ -6,7 +6,7 @@ import { enhancedDocumentProcessor } from '../services/enhancedDocumentProcessor
 import Navigation from '../components/Navigation';
 import './Index.css';
 
-// Debounce utility function
+// Chrome-optimized debounce utility function
 const debounce = (func: Function, wait: number) => {
   let timeout: NodeJS.Timeout;
   return (...args: any[]) => {
@@ -15,7 +15,7 @@ const debounce = (func: Function, wait: number) => {
   };
 };
 
-// Throttle utility function for UI updates
+// Chrome-optimized throttle utility function for UI updates
 const throttle = (func: Function, limit: number) => {
   let inThrottle: boolean;
   return (...args: any[]) => {
@@ -25,6 +25,38 @@ const throttle = (func: Function, limit: number) => {
       setTimeout(() => inThrottle = false, limit);
     }
   };
+};
+
+// Chrome-specific performance utilities
+const chromeUtils = {
+  // Use requestAnimationFrame for smooth UI updates
+  requestAnimationFrame: (callback: () => void) => {
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      return window.requestAnimationFrame(callback);
+    } else {
+      return setTimeout(callback, 16); // ~60fps fallback
+    }
+  },
+
+  // Yield control to prevent blocking
+  yield: () => new Promise(resolve => setTimeout(resolve, 0)),
+
+  // Chrome-specific yielding with requestIdleCallback
+  yieldIdle: () => {
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      return new Promise(resolve => {
+        (window as any).requestIdleCallback(resolve, { timeout: 50 });
+      });
+    } else {
+      return new Promise(resolve => setTimeout(resolve, 1));
+    }
+  },
+
+  // Check if running in Chrome
+  isChrome: () => {
+    if (typeof window === 'undefined') return false;
+    return /Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent);
+  }
 };
 
 interface Message {
@@ -86,11 +118,20 @@ export default function Index() {
   const [editValue, setEditValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const processingRef = useRef<boolean>(false);
 
   const aiProviders: AIProvider[] = [
     { id: 'openai', name: 'OpenAI GPT-4', endpoint: '/api/openai/chat' },
     { id: 'gemini', name: 'Google Gemini', endpoint: '/api/gemini/chat' }
   ];
+
+  // Chrome-optimized state updates using requestAnimationFrame
+  const setStateOptimized = useCallback((setter: React.Dispatch<React.SetStateAction<any>>, value: any) => {
+    chromeUtils.requestAnimationFrame(() => {
+      setter(value);
+    });
+  }, []);
 
   // Check if device is mobile
   useEffect(() => {
@@ -99,11 +140,24 @@ export default function Index() {
       setIsMobile(mobile);
       setSidebarOpen(!mobile);
     };
-    
+
     checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
+    window.addEventListener('resize', debounce(checkMobile, 250));
+    return () => window.removeEventListener('resize', debounce(checkMobile, 250));
   }, []);
+
+  // Chrome-optimized scroll to bottom
+  const scrollToBottom = useCallback(() => {
+    chromeUtils.requestAnimationFrame(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   // Initialize chat session
   useEffect(() => {
@@ -181,22 +235,23 @@ export default function Index() {
     return timestamp.toLocaleDateString();
   }, []);
 
-  // Debounced input handler to prevent excessive processing
-  const debouncedInputChange = useCallback(
+  // Chrome-optimized debounced input handler
+  const debouncedSetInputValue = useCallback(
     debounce((value: string) => {
       setInputValue(value);
     }, 100),
     []
   );
 
+  // Chrome-optimized input change handler
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
-    // Update immediately for UI responsiveness
-    e.target.value = value;
-    // Debounce the actual state update
-    debouncedInputChange(value);
-  }, [debouncedInputChange]);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
+    debouncedSetInputValue(value);
+  }, [debouncedSetInputValue]);
 
+  // Chrome-optimized key press handler
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -204,10 +259,18 @@ export default function Index() {
     }
   }, []);
 
+  // Chrome-optimized file upload with better error handling
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
 
+    // Prevent multiple simultaneous uploads
+    if (processingRef.current) {
+      alert('Please wait for the current upload to complete.');
+      return;
+    }
+
+    processingRef.current = true;
     setIsUploading(true);
     const newFiles: UploadedFile[] = [];
 
@@ -225,7 +288,7 @@ export default function Index() {
 
         // Show processing status for large files
         if (file.size > 5 * 1024 * 1024) { // 5MB threshold
-          setLoadingStage(`Processing large file: ${file.name}...`);
+          setStateOptimized(setLoadingStage, `Processing large file: ${file.name}...`);
         }
         
         // Use the production API service with timeout for large files
@@ -238,24 +301,27 @@ export default function Index() {
           clearTimeout(timeoutId);
 
           if (result.success) {
-            // For large PDFs, use enhanced processing
+            // For large PDFs, use enhanced processing with Chrome optimizations
             if (file.type === 'application/pdf' && file.size > 5 * 1024 * 1024) {
-              setLoadingStage(`Indexing large PDF: ${file.name}...`);
+              setStateOptimized(setLoadingStage, `Indexing large PDF: ${file.name}...`);
               
               try {
                 const pdfResult = await enhancedDocumentProcessor.processLargePDF(
                   file,
                   (progress) => {
-                    setProcessingProgress(progress.percentage);
-                    setLoadingStage(`Indexing PDF page ${progress.pageNum}/${progress.totalPages}...`);
-                  }
+                    setStateOptimized(setProcessingProgress, progress.percentage);
+                    setStateOptimized(setLoadingStage, `Indexing PDF page ${progress.pageNum}/${progress.totalPages}...`);
+                  },
+                  3 // Chrome-optimized chunk size
                 );
                 
                 if (pdfResult.success) {
-                  setDocumentStats(pdfResult.stats);
+                  setStateOptimized(setDocumentStats, pdfResult.stats);
                 }
               } catch (error) {
                 console.warn('Enhanced PDF processing failed:', error);
+                // Reset workers if they failed
+                enhancedDocumentProcessor.resetWorkers();
               }
             }
             
@@ -282,6 +348,11 @@ export default function Index() {
             throw error;
           }
         }
+
+        // Yield control between files for Chrome
+        if (i < files.length - 1) {
+          await chromeUtils.yield();
+        }
       }
 
       setUserFiles(prev => [...prev, ...newFiles]);
@@ -289,6 +360,7 @@ export default function Index() {
       console.error('Upload error:', error);
       alert('Upload failed. Please try again.');
     } finally {
+      processingRef.current = false;
       setIsUploading(false);
       setLoadingStage('');
       setProcessingProgress(0);
@@ -297,7 +369,7 @@ export default function Index() {
         fileInputRef.current.value = '';
       }
     }
-  }, []);
+  }, [setStateOptimized]);
 
   const startNewChat = useCallback(() => {
     const sessionId = Date.now().toString();
@@ -359,11 +431,13 @@ export default function Index() {
     ));
   }, []);
 
+  // Chrome-optimized chat submit with better performance
   const handleChatSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isLoading) {
+    if (!inputValue.trim() || isLoading || processingRef.current) {
       return;
     }
 
+    processingRef.current = true;
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -381,7 +455,7 @@ export default function Index() {
     setProcessingProgress(0);
 
     // Add a small delay to prevent UI blocking and show loading state
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await chromeUtils.yield();
 
     try {
       // Prepare document context
@@ -399,11 +473,11 @@ export default function Index() {
         content: msg.content
       }));
 
-      // Use enhanced document processing for large documents
+      // Use enhanced document processing for large documents with Chrome optimizations
       let relevantDocuments = documentContext;
       
       if (documentContext.length > 0) {
-        setLoadingStage('Analyzing documents...');
+        setStateOptimized(setLoadingStage, 'Analyzing documents...');
         
         try {
           // Check if we have large documents that need enhanced processing
@@ -412,15 +486,15 @@ export default function Index() {
           );
           
           if (hasLargeDocuments) {
-            setLoadingStage('Processing large documents with enhanced analysis...');
+            setStateOptimized(setLoadingStage, 'Processing large documents with enhanced analysis...');
             
-            // Use enhanced processor for large documents
+            // Use enhanced processor for large documents with Chrome optimizations
             relevantDocuments = await enhancedDocumentProcessor.processDocumentsEnhanced(
               documentContext,
               inputValue,
               (progress) => {
-                setProcessingProgress(progress);
-                setLoadingStage(`Enhanced document analysis... ${progress}%`);
+                setStateOptimized(setProcessingProgress, progress);
+                setStateOptimized(setLoadingStage, `Enhanced document analysis... ${progress}%`);
               }
             );
           } else {
@@ -429,19 +503,21 @@ export default function Index() {
               documentContext,
               inputValue,
               (progress) => {
-                setProcessingProgress(progress);
-                setLoadingStage(`Analyzing documents... ${progress}%`);
+                setStateOptimized(setProcessingProgress, progress);
+                setStateOptimized(setLoadingStage, `Analyzing documents... ${progress}%`);
               }
             );
           }
         } catch (error) {
           console.warn('Enhanced processing failed, using fallback:', error);
+          // Reset workers if they failed
+          enhancedDocumentProcessor.resetWorkers();
           // Fallback to original documents
           relevantDocuments = documentContext;
         }
       }
       
-      setLoadingStage('Searching for information...');
+      setStateOptimized(setLoadingStage, 'Searching for information...');
       
       // Enhanced request with processed documents
       const request: ChatRequest = {
@@ -510,30 +586,30 @@ export default function Index() {
         ));
       }
 
-          } catch (error) {
-        console.error('Chat error:', error);
-        
-        let errorContent = 'I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.';
-        
-        // Provide more specific error messages
-        if (error instanceof Error) {
-          if (error.message.includes('timeout')) {
-            errorContent = '⏱️ **Request Timeout:** The request took too long to process. This might be due to large documents or high server load. Please try again with a simpler query or fewer documents.';
-          } else if (error.message.includes('API key') || error.message.includes('authentication')) {
-            errorContent = '⚠️ **Authentication Error:** Please check your API keys in Settings. The AI service requires valid API credentials to function.';
-          } else if (error.message.includes('network') || error.message.includes('fetch')) {
-            errorContent = '🌐 **Network Error:** Unable to connect to the AI service. Please check your internet connection and try again.';
-          } else if (error.message.includes('rate limit')) {
-            errorContent = '⏱️ **Rate Limit Exceeded:** Too many requests. Please wait a moment and try again.';
-          } else if (error.message.includes('document') || error.message.includes('file')) {
-            errorContent = '📄 **Document Processing Error:** There was an issue processing your uploaded documents. Please try re-uploading them.';
-          } else if (error.message.includes('context') || error.message.includes('insufficient')) {
-            errorContent = '🤔 **Insufficient Context:** I don\'t have enough information from your uploaded documents to answer this question fully. Could you provide more details or upload additional relevant documents?';
-          } else if (error.message.includes('performance') || error.message.includes('blocking')) {
-            errorContent = '⚡ **Performance Issue:** The request is taking longer than expected. This might be due to large documents. Please try with fewer documents or a simpler query.';
-          }
-        }
+    } catch (error) {
+      console.error('Chat error:', error);
       
+      let errorContent = 'I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.';
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          errorContent = '⏱️ **Request Timeout:** The request took too long to process. This might be due to large documents or high server load. Please try again with a simpler query or fewer documents.';
+        } else if (error.message.includes('API key') || error.message.includes('authentication')) {
+          errorContent = '⚠️ **Authentication Error:** Please check your API keys in Settings. The AI service requires valid API credentials to function.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          errorContent = '🌐 **Network Error:** Unable to connect to the AI service. Please check your internet connection and try again.';
+        } else if (error.message.includes('rate limit')) {
+          errorContent = '⏱️ **Rate Limit Exceeded:** Too many requests. Please wait a moment and try again.';
+        } else if (error.message.includes('document') || error.message.includes('file')) {
+          errorContent = '📄 **Document Processing Error:** There was an issue processing your uploaded documents. Please try re-uploading them.';
+        } else if (error.message.includes('context') || error.message.includes('insufficient')) {
+          errorContent = '🤔 **Insufficient Context:** I don\'t have enough information from your uploaded documents to answer this question fully. Could you provide more details or upload additional relevant documents?';
+        } else if (error.message.includes('performance') || error.message.includes('blocking')) {
+          errorContent = '⚡ **Performance Issue:** The request is taking longer than expected. This might be due to large documents. Please try with fewer documents or a simpler query.';
+        }
+      }
+    
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -577,15 +653,16 @@ export default function Index() {
       } catch (saveError) {
         console.error('Error saving chat session:', saveError);
       }
-          } finally {
-        const endTime = Date.now();
-        const totalTime = endTime - startTime;
-        setProcessingTime(totalTime);
-        setIsLoading(false);
-        setLoadingStage('');
-        setProcessingProgress(0);
-      }
-  }, [inputValue, isLoading, userFiles, messages, currentSessionId, selectedAIProvider, searchWeb]);
+    } finally {
+      const endTime = Date.now();
+      const totalTime = endTime - startTime;
+      setProcessingTime(totalTime);
+      setIsLoading(false);
+      setLoadingStage('');
+      setProcessingProgress(0);
+      processingRef.current = false;
+    }
+  }, [inputValue, isLoading, userFiles, messages, currentSessionId, selectedAIProvider, searchWeb, setStateOptimized]);
 
   const exportChatSession = useCallback((sessionId: string) => {
     const session = chatSessions.find(s => s.id === sessionId);
@@ -640,140 +717,233 @@ export default function Index() {
     await signOut();
   }, [signOut]);
 
-  // Auto-scroll to bottom when messages change
+  // Chrome-optimized component cleanup
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    return () => {
+      documentProcessor.destroy();
+      enhancedDocumentProcessor.destroy();
+    };
+  }, []);
 
-  return (
-    <div className="chat-page">
-      <Navigation currentPage="home" />
-      
-      <div className="chatbot-container">
-        {/* Sidebar */}
-        <aside className={`chatbot-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-          <div className="sidebar-header">
-            <div className="sidebar-brand">
-              <h2>Chat History</h2>
+  // Chrome-optimized message rendering
+  const renderMessage = useCallback((message: Message) => {
+    if (message.isDeleted) return null;
+
+    const isEditing = editingMessageId === message.id;
+
+    return (
+      <div key={message.id} className={`message ${message.role}`}>
+        <div className="message-content">
+          {isEditing ? (
+            <div className="edit-message">
+              <textarea
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    editMessage(message.id, editValue);
+                  } else if (e.key === 'Escape') {
+                    setEditingMessageId(null);
+                    setEditValue('');
+                  }
+                }}
+                autoFocus
+              />
+              <div className="edit-actions">
+                <button onClick={() => editMessage(message.id, editValue)}>Save</button>
+                <button onClick={() => {
+                  setEditingMessageId(null);
+                  setEditValue('');
+                }}>Cancel</button>
+              </div>
             </div>
-            <button 
-              className="sidebar-toggle"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          ) : (
+            <>
+              <div className="message-text" dangerouslySetInnerHTML={{ __html: message.content.replace(/\n/g, '<br>') }} />
+              {message.sources && message.sources.length > 0 && showSources && (
+                <div className="message-sources">
+                  <strong>Sources:</strong>
+                  <ul>
+                    {message.sources.map((source, index) => (
+                      <li key={index}>{source}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {message.responseTime && (
+                <div className="response-time">
+                  Response time: {message.responseTime}ms
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        {message.role === 'user' && !isEditing && (
+          <div className="message-actions">
+            <button
+              className="edit-btn"
+              onClick={() => {
+                setEditingMessageId(message.id);
+                setEditValue(message.content);
+              }}
+              title="Edit message"
             >
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <button
+              className="delete-btn"
+              onClick={() => deleteMessage(message.id)}
+              title="Delete message"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18"/>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
               </svg>
             </button>
           </div>
-
-          <button className="new-chat-btn" onClick={startNewChat}>
-            ➕ New Chat
-          </button>
-
-          <div className="chat-history">
-            {chatSessions.map((session) => (
-              <div
-                key={session.id}
-                className={`chat-session ${session.id === currentSessionId ? 'active' : ''}`}
-              >
-                <div 
-                  className="session-content"
-                  onClick={() => selectChatSession(session.id)}
-                >
-                  <div className="session-title">{session.title}</div>
-                  <div className="session-meta">
-                    {session.messages.length} messages • {formatTime(session.lastUpdated)}
-                    {session.documentCount > 0 && (
-                      <span> • 📄 {session.documentCount}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="session-actions">
-                  <button 
-                    className="session-action-btn"
-                    onClick={() => exportChatSession(session.id)}
-                    title="Export chat"
-                  >
-                    📤
-                  </button>
-                  <button 
-                    className="session-action-btn delete"
-                    onClick={() => deleteChatSession(session.id)}
-                    title="Delete chat"
-                  >
-                    🗑️
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="sidebar-footer">
-            {user && (
-              <div className="user-section">
-                <div className="user-info-sidebar">
-                  <span>{user.email}</span>
-                </div>
-                <button className="nav-btn" onClick={() => window.location.href = '/upload'}>
-                  📁 Upload Documents
-                </button>
-                <button className="nav-btn" onClick={() => window.location.href = '/settings'}>
-                  ⚙️ Settings
-                </button>
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {/* Mobile Sidebar Overlay */}
-        {isMobile && sidebarOpen && (
-          <div 
-            className="sidebar-overlay"
-            onClick={() => setSidebarOpen(false)}
-          />
         )}
+      </div>
+    );
+  }, [editingMessageId, editValue, showSources, editMessage, deleteMessage]);
 
-        {/* Main Chat Area */}
-        <main className="chatbot-main">
+  // Chrome-optimized chat session rendering
+  const renderChatSession = useCallback((session: ChatSession) => (
+    <div
+      key={session.id}
+      className={`chat-session ${currentSessionId === session.id ? 'active' : ''}`}
+      onClick={() => selectChatSession(session.id)}
+    >
+      <div className="session-info">
+        <div className="session-title">{session.title}</div>
+        <div className="session-meta">
+          {session.documentCount} documents • {session.messages.length} messages
+        </div>
+      </div>
+      <div className="session-actions">
+        <button
+          className="export-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            exportChatSession(session.id);
+          }}
+          title="Export chat"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7,10 12,15 17,10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <button
+          className="delete-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            deleteChatSession(session.id);
+          }}
+          title="Delete chat"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 6h18"/>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  ), [currentSessionId, selectChatSession, exportChatSession, deleteChatSession]);
+
+  // Chrome-optimized submit handler
+  const handleSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    handleChatSubmit();
+  }, [handleChatSubmit]);
+
+  // Chrome-optimized mobile menu toggle
+  const toggleMobileMenu = useCallback(() => {
+    setSidebarOpen(prev => !prev);
+  }, []);
+
+  // Chrome-optimized AI provider change
+  const handleAIProviderChange = useCallback((provider: string) => {
+    setSelectedAIProvider(provider);
+  }, []);
+
+  // Chrome-optimized web search toggle
+  const handleWebSearchToggle = useCallback(() => {
+    setSearchWeb(prev => !prev);
+  }, []);
+
+  // Chrome-optimized sources toggle
+  const handleSourcesToggle = useCallback(() => {
+    setShowSources(prev => !prev);
+  }, []);
+
+  // Chrome-optimized file input click
+  const handleFileInputClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  // Chrome-optimized clear files
+  const handleClearFiles = useCallback(() => {
+    setUserFiles([]);
+    setDocumentStats(null);
+  }, []);
+
+  // Chrome-optimized sign out
+  const handleSignOut = useCallback(() => {
+    signOut();
+  }, [signOut]);
+
+  // Chrome-optimized performance indicator
+  const renderPerformanceIndicator = useCallback(() => {
+    if (processingTime > 0) {
+      return (
+        <div className="performance-indicator">
+          <span>Processing time: {processingTime}ms</span>
+          {chromeUtils.isChrome() && (
+            <span className="chrome-optimized">Chrome Optimized</span>
+          )}
+        </div>
+      );
+    }
+    return null;
+  }, [processingTime]);
+
+  return (
+    <div className="chat-container">
+      <Navigation />
+      
+      <div className="chat-main">
+        <div className="chat-sidebar">
+          <div className="sidebar-header">
+            <h3>Chat History</h3>
+            <button className="new-chat-btn" onClick={startNewChat}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              New Chat
+            </button>
+          </div>
+          
+          <div className="chat-sessions">
+            {chatSessions.map(renderChatSession)}
+          </div>
+        </div>
+        
+        <div className="chat-content">
           <div className="chat-header">
-            <div className="header-left">
-              {isMobile ? (
-                <button 
-                  className="mobile-menu-btn"
-                  onClick={() => setSidebarOpen(true)}
-                >
-                  ☰
-                </button>
-              ) : !sidebarOpen && (
-                <button 
-                  className="sidebar-toggle-main"
-                  onClick={() => setSidebarOpen(true)}
-                  title="Open sidebar"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 12H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M3 6H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              )}
-              <div>
-                <h1 className="header-title">DocNet</h1>
-                <p className="header-subtitle">AI Research Assistant</p>
-                {userFiles.length > 0 && (
-                  <div className="document-indicator">
-                    📄 {userFiles.length} document{userFiles.length !== 1 ? 's' : ''} loaded
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="header-controls">
+            <div className="chat-controls">
               <div className="ai-provider-selector">
+                <label>AI Provider:</label>
                 <select 
-                  value={selectedAIProvider}
-                  onChange={(e) => setSelectedAIProvider(e.target.value)}
-                  className="provider-select"
+                  value={selectedAIProvider} 
+                  onChange={(e) => handleAIProviderChange(e.target.value)}
                 >
                   {aiProviders.map(provider => (
                     <option key={provider.id} value={provider.id}>
@@ -782,165 +952,60 @@ export default function Index() {
                   ))}
                 </select>
               </div>
-              <label className="search-web-toggle">
-                <input
-                  type="checkbox"
-                  checked={searchWeb}
-                  onChange={(e) => setSearchWeb(e.target.checked)}
-                />
-                <span>🌐 Web Search</span>
-              </label>
+              
+              <div className="search-options">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={searchWeb}
+                    onChange={handleWebSearchToggle}
+                  />
+                  Web Search
+                </label>
+                
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={showSources}
+                    onChange={handleSourcesToggle}
+                  />
+                  Show Sources
+                </label>
+              </div>
+            </div>
+            
+            <div className="file-controls">
+              <button className="upload-btn" onClick={handleFileInputClick}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17,8 12,3 7,8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Upload Files
+              </button>
+              
+              {userFiles.length > 0 && (
+                <button className="clear-btn" onClick={handleClearFiles}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 6h18"/>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                  </svg>
+                  Clear Files
+                </button>
+              )}
             </div>
           </div>
-
-          <div className="messages-container">
-            {messages.length === 0 ? (
-              <div className="welcome-screen">
-                <h2>Welcome to DocNet</h2>
-                <p>Upload documents and start a conversation to get intelligent research insights!</p>
-                
-                <div className="upload-section">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.doc,.docx,.txt"
-                    onChange={handleFileUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                    className="upload-btn"
-                  >
-                    {isUploading ? 'Uploading...' : '📁 Upload Documents'}
-                  </button>
-                </div>
-
-                {userFiles.length > 0 && (
-                  <div className="uploaded-files">
-                    <h3>Uploaded Documents:</h3>
-                    {userFiles.map(file => (
-                      <div key={file.id} className="file-item">
-                        📄 {file.name} ({Math.round(file.size / 1024)}KB)
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="import-section">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={importChatSession}
-                    style={{ display: 'none' }}
-                    id="import-chat"
-                  />
-                  <label htmlFor="import-chat" className="import-btn">
-                    📥 Import Chat Session
-                  </label>
-                </div>
-
-                <button
-                  onClick={() => setInputValue("Hello! How can you help me with research?")}
-                  className="sample-btn"
-                >
-                  Try a sample question
-                </button>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <div key={message.id} className={`message ${message.role} ${message.isDeleted ? 'deleted' : ''}`}>
-                  <div className="message-content">
-                    {message.isEditing ? (
-                      <div className="edit-message">
-                        <textarea
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              editMessage(message.id, editValue);
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <div className="edit-actions">
-                          <button onClick={() => editMessage(message.id, editValue)}>Save</button>
-                          <button onClick={() => {
-                            setEditingMessageId(null);
-                            setEditValue('');
-                          }}>Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="message-text">{message.content}</div>
-                        {message.sources && message.sources.length > 0 && showSources && (
-                          <div className="message-sources">
-                            <h4>Sources:</h4>
-                            <ul>
-                              {message.sources.map((source, index) => (
-                                <li key={index}>{source}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <div className="message-footer">
-                          <div className="message-time">
-                            {formatTime(message.timestamp)}
-                            {message.responseTime && (
-                              <span> • {message.responseTime}ms</span>
-                            )}
-                          </div>
-                          {message.role === 'user' && !message.isDeleted && (
-                            <div className="message-actions">
-                              <button 
-                                onClick={() => {
-                                  setEditingMessageId(message.id);
-                                  setEditValue(message.content);
-                                }}
-                                className="action-btn edit-btn"
-                                title="Edit message"
-                              >
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
-                                  <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M18.5 2.50023C18.8978 2.10297 19.4374 1.87891 20 1.87891C20.5626 1.87891 21.1022 2.10297 21.5 2.50023C21.8978 2.89749 22.1218 3.43705 22.1218 3.99973C22.1218 4.56241 21.8978 5.10197 21.5 5.49923L12 15.0002L8 16.0002L9 12.0002L18.5 2.50023Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </button>
-                              <button 
-                                onClick={() => deleteMessage(message.id)}
-                                className="action-btn delete-btn"
-                                title="Delete message"
-                              >
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
-                                  <path d="M3 6H5H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                  <path d="M8 6V4C8 3.46957 8.21071 2.96086 8.58579 2.58579C8.96086 2.21071 9.46957 2 10 2H14C14.5304 2 15.0391 2.21071 15.4142 2.58579C15.7893 2.96086 16 3.46957 16 4V6M19 6V20C19 20.5304 18.7893 21.0391 18.4142 21.4142C18.0391 21.7893 17.5304 22 17 22H7C6.46957 22 5.96086 21.7893 5.58579 21.4142C5.21071 21.0391 5 20.5304 5 20V6H19Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                              </button>
-                            </div>
-                          )}
-                          {message.sources && message.sources.length > 0 && (
-                            <button 
-                              onClick={() => setShowSources(!showSources)}
-                              className="sources-toggle"
-                            >
-                              {showSources ? 'Hide' : 'Show'} Sources
-                            </button>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
+          
+          <div className="chat-messages">
+            {messages.map(renderMessage)}
             
             {isLoading && (
-              <div className="message assistant">
-                <div className="message-content">
-                  <div className="loading-indicator">
-                    <span>{loadingStage || 'AI is thinking...'}</span>
+              <div className="loading-message">
+                <div className="loading-indicator">
+                  <div className="spinner"></div>
+                  <div className="loading-text">
+                    {loadingStage || 'Processing...'}
                     {processingProgress > 0 && (
                       <div className="progress-bar">
                         <div 
@@ -949,17 +1014,12 @@ export default function Index() {
                         ></div>
                       </div>
                     )}
-                    <div className="typing-dots">
-                      <span></span>
-                      <span></span>
-                      <span></span>
-                    </div>
                   </div>
                 </div>
+                {renderPerformanceIndicator()}
               </div>
             )}
-
-            {/* Document Statistics Display */}
+            
             {documentStats && (
               <div className="message assistant">
                 <div className="message-content">
@@ -976,7 +1036,7 @@ export default function Index() {
                       </div>
                       <div className="stat-item">
                         <span className="stat-label">Text Length:</span>
-                        <span className="stat-value">{(documentStats.totalTextLength / 1024).toFixed(1)} KB</span>
+                        <span className="stat-value">{documentStats.totalTextLength.toLocaleString()}</span>
                       </div>
                       <div className="stat-item">
                         <span className="stat-label">Indexed Words:</span>
@@ -988,64 +1048,51 @@ export default function Index() {
               </div>
             )}
             
-            {processingTime > 0 && !isLoading && (
-              <div className="performance-indicator">
-                <span>⏱️ Processed in {(processingTime / 1000).toFixed(1)}s</span>
-              </div>
-            )}
-            
             <div ref={messagesEndRef} />
           </div>
-
-          <form 
-            className="input-form" 
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleChatSubmit();
-            }}
-          >
+          
+          <form className="chat-input-form" onSubmit={handleSubmit}>
             <div className="input-container">
               <textarea
-                className="message-input"
+                ref={textareaRef}
                 value={inputValue}
                 onChange={handleInputChange}
-                onKeyPress={handleKeyPress}
-                placeholder="Type your message here..."
-                disabled={isLoading}
+                onKeyDown={handleKeyPress}
+                placeholder="Ask me anything about your documents or research topics..."
+                disabled={isLoading || isUploading}
                 rows={1}
               />
-              <button
-                type="submit"
+              
+              <button 
+                type="submit" 
+                disabled={!inputValue.trim() || isLoading || isUploading}
                 className="send-btn"
-                disabled={isLoading || !inputValue.trim()}
               >
-                ➤
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22,2 15,22 11,13 2,9 22,2"/>
+                </svg>
               </button>
             </div>
             
-            {userFiles.length > 0 && (
-              <div className="file-upload-section">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx,.txt"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                  className="upload-btn-small"
-                >
-                  {isUploading ? '📤 Uploading...' : '📁 Add Files'}
-                </button>
+            {isUploading && (
+              <div className="upload-status">
+                <div className="upload-spinner"></div>
+                <span>Uploading files...</span>
               </div>
             )}
           </form>
-        </main>
+        </div>
       </div>
+      
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.txt,.doc,.docx"
+        onChange={handleFileUpload}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }
