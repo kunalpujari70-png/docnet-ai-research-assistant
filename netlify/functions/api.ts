@@ -81,12 +81,15 @@ async function performWebSearch(query: string): Promise<any[]> {
   }
 }
 
-// Enhanced document analysis function with better relevance scoring
+// Enhanced document analysis function with improved relevance scoring
 function analyzeDocumentsForRelevance(query: string, documents: any[]): any[] {
   const queryLower = query.toLowerCase();
-  const queryWords = queryLower.split(/\s+/).filter(word => word.length > 2);
+  const queryWords = queryLower.split(/\s+/).filter(word => word.length > 1); // Lower word length threshold
   
-  return documents.map(doc => {
+  console.log(`Analyzing documents for query: "${query}"`);
+  console.log(`Query words: ${queryWords.join(', ')}`);
+  
+  const results = documents.map(doc => {
     const contentLower = doc.content.toLowerCase();
     const summaryLower = doc.summary.toLowerCase();
     const nameLower = doc.name.toLowerCase();
@@ -97,62 +100,85 @@ function analyzeDocumentsForRelevance(query: string, documents: any[]): any[] {
       exactMatches: 0,
       summaryMatches: 0,
       contentMatches: 0,
-      nameMatches: 0
+      nameMatches: 0,
+      partialMatches: 0
     };
     
-    // Check for exact word matches
+    // Check for exact word matches (more sensitive)
     queryWords.forEach(word => {
       if (contentLower.includes(word)) {
-        relevanceScore += 2;
+        relevanceScore += 3; // Increased from 2
         matchDetails.contentMatches++;
       }
       if (summaryLower.includes(word)) {
-        relevanceScore += 4;
+        relevanceScore += 6; // Increased from 4
         matchDetails.summaryMatches++;
       }
       if (nameLower.includes(word)) {
-        relevanceScore += 3;
+        relevanceScore += 5; // Increased from 3
         matchDetails.nameMatches++;
       }
     });
     
-    // Check for exact phrase matches (higher priority)
+    // Check for exact phrase matches (highest priority)
     if (contentLower.includes(queryLower)) {
-      relevanceScore += 10;
+      relevanceScore += 20; // Increased from 10
       matchDetails.exactMatches++;
     }
     if (summaryLower.includes(queryLower)) {
-      relevanceScore += 15;
+      relevanceScore += 25; // Increased from 15
       matchDetails.exactMatches++;
+    }
+    
+    // Check for partial phrase matches (new)
+    const queryParts = queryLower.split(/\s+/);
+    if (queryParts.length > 1) {
+      // Check if most words in the query are found in content
+      const matchingParts = queryParts.filter(part => contentLower.includes(part));
+      if (matchingParts.length >= Math.ceil(queryParts.length * 0.7)) { // 70% match threshold
+        relevanceScore += 15;
+        matchDetails.partialMatches++;
+      }
     }
     
     // Check for semantic similarity with expanded keywords
     const semanticKeywords = [
       'research', 'study', 'analysis', 'data', 'findings', 'conclusion', 'method', 'result',
       'report', 'document', 'paper', 'article', 'summary', 'overview', 'details', 'information',
-      'statistics', 'figures', 'numbers', 'percentages', 'trends', 'patterns', 'insights'
+      'statistics', 'figures', 'numbers', 'percentages', 'trends', 'patterns', 'insights',
+      'mount', 'mountain', 'hill', 'peak', 'summit', 'location', 'place', 'area', 'region',
+      'history', 'historical', 'ancient', 'temple', 'religious', 'sacred', 'pilgrimage'
     ];
     
     semanticKeywords.forEach(keyword => {
       if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
-        relevanceScore += 2;
+        relevanceScore += 3; // Increased from 2
       }
     });
     
     // Bonus for documents with substantial content
-    if (contentLower.length > 500) relevanceScore += 1;
-    if (summaryLower.length > 100) relevanceScore += 2;
+    if (contentLower.length > 500) relevanceScore += 2;
+    if (summaryLower.length > 100) relevanceScore += 3;
     
-    return {
+    const result = {
       ...doc,
       relevanceScore,
       matchDetails,
-      isRelevant: relevanceScore >= 3, // Higher threshold for relevance
-      confidence: relevanceScore >= 10 ? 'high' : relevanceScore >= 5 ? 'medium' : 'low'
+      isRelevant: relevanceScore >= 2, // Lowered threshold from 3 to 2
+      confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
     };
-  }).filter(doc => doc.isRelevant)
+    
+    console.log(`Document "${doc.name}": score=${relevanceScore}, matches=${JSON.stringify(matchDetails)}, relevant=${result.isRelevant}`);
+    
+    return result;
+  });
+  
+  const relevantDocs = results.filter(doc => doc.isRelevant)
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
-    .slice(0, 5); // Increased limit for better coverage
+    .slice(0, 5);
+  
+  console.log(`Found ${relevantDocs.length} relevant documents out of ${documents.length} total`);
+  return relevantDocs;
 }
 
 // Call Gemini API
@@ -249,10 +275,17 @@ async function callOpenAIAPI(prompt: string, documents: any[] = [], webResults: 
       relevantDocuments.forEach((doc, index) => {
         systemMessage += `\n**Document ${index + 1}: ${doc.name}**\n`;
         systemMessage += `Summary: ${doc.summary}\n`;
-        systemMessage += `Key Content: ${doc.content.substring(0, 1000)}...\n`;
+        systemMessage += `Full Content: ${doc.content}\n`; // Include full content instead of truncated
+        systemMessage += `Relevance Score: ${doc.relevanceScore} (${doc.confidence} confidence)\n`;
+        systemMessage += `Match Details: ${JSON.stringify(doc.matchDetails)}\n`;
       });
     } else if (documents.length > 0) {
-      systemMessage += `\n\nYou have ${documents.length} uploaded document(s), but none seem directly relevant to this query. You can still reference general themes or topics from these documents if helpful.`;
+      systemMessage += `\n\nYou have ${documents.length} uploaded document(s), but the relevance analysis didn't find direct matches. However, you should still check these documents manually for any relevant information:\n`;
+      documents.forEach((doc, index) => {
+        systemMessage += `\n**Document ${index + 1}: ${doc.name}**\n`;
+        systemMessage += `Content: ${doc.content.substring(0, 500)}...\n`;
+      });
+      systemMessage += `\nIMPORTANT: Even if the relevance analysis didn't flag these documents, manually search through their content for any information related to the user's question.`;
     } else {
       systemMessage += `\n\nNo documents are currently uploaded. You can provide general knowledge and suggest uploading relevant documents for more specific analysis.`;
     }
@@ -266,33 +299,43 @@ async function callOpenAIAPI(prompt: string, documents: any[] = [], webResults: 
       });
     }
 
-    systemMessage += `\n\n**CRITICAL RESPONSE INSTRUCTIONS:**
+    systemMessage += `\n\n**CRITICAL RESPONSE INSTRUCTIONS - DOCUMENT PRIORITY IS MANDATORY:**
 
-**DOCUMENT PRIORITY SYSTEM:**
-1. **FIRST**: Check uploaded documents for relevant information
-2. **SECOND**: Only use web search if documents don't contain sufficient information
-3. **THIRD**: Ask for clarification if context is insufficient
+**ABSOLUTE DOCUMENT PRIORITY RULES:**
+1. **ALWAYS CHECK DOCUMENTS FIRST** - Before doing anything else, thoroughly search through ALL uploaded documents
+2. **IF DOCUMENTS CONTAIN THE ANSWER** - Use ONLY document content, do NOT use web search
+3. **ONLY USE WEB SEARCH** if documents are completely empty of relevant information
+4. **NEVER SAY "I couldn't find information in documents"** if documents actually contain relevant content
 
-**RESPONSE FORMAT REQUIREMENTS:**
-- **If documents contain relevant info**: Start with "📄 **Based on your uploaded documents:**" followed by document-based answer
-- **If documents + web search**: Use "📄 **Based on your uploaded documents and web search:**"
-- **If only web search**: Start with "🌐 **I couldn't find specific information in your uploaded documents. Here's what I found on the internet:**"
+**MANDATORY RESPONSE FORMAT:**
+- **If documents contain relevant info**: Start with "📄 **Based on your uploaded documents:**" and provide answer from documents ONLY
+- **If documents + web search needed**: Use "📄 **Based on your uploaded documents and web search:**" 
+- **If ONLY web search (no relevant documents)**: Start with "🌐 **I couldn't find specific information in your uploaded documents. Here's what I found on the internet:**"
 - **If insufficient context**: Ask "🤔 **I don't have enough context from the uploaded documents to answer your question fully. Could you provide more details?**"
+
+**DOCUMENT SEARCH REQUIREMENTS:**
+- Search through ALL document content, not just summaries
+- Look for partial matches, synonyms, and related terms
+- If the query mentions "Mount Mandar", search for "mandar", "mountain", "mount", "pandar", etc.
+- If documents contain ANY relevant information, use it as your primary source
 
 **DOCUMENT REFERENCING:**
 - Always mention specific document names when using their content
 - Quote relevant sections from documents when possible
 - Explain how document content relates to the user's question
+- Be specific about which document contains which information
 
-**WEB SEARCH INTEGRATION:**
-- Only use web search when documents don't provide sufficient information
+**WEB SEARCH RESTRICTIONS:**
+- ONLY use web search when documents are completely devoid of relevant information
+- If documents contain ANY relevant content, prioritize that over web search
+- Use web search to supplement document information, never replace it
 - Clearly separate document-based information from web-based information
-- Use web search to supplement, not replace, document content
 
 **CONTEXT HANDLING:**
-- If the question is too vague or requires more context, ask for clarification
-- Suggest uploading additional relevant documents if needed
-- Provide partial answers based on available information when possible`;
+- If the question is too vague, ask for clarification
+- If documents exist but don't seem relevant, double-check for partial matches
+- Provide partial answers based on available document information when possible
+- Suggest uploading additional relevant documents if needed`;
 
     const messages: Array<{
       role: 'system' | 'user' | 'assistant';
