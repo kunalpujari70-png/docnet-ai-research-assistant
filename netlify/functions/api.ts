@@ -81,7 +81,7 @@ async function performWebSearch(query: string): Promise<any[]> {
   }
 }
 
-// Enhanced document analysis function
+// Enhanced document analysis function with better relevance scoring
 function analyzeDocumentsForRelevance(query: string, documents: any[]): any[] {
   const queryLower = query.toLowerCase();
   const queryWords = queryLower.split(/\s+/).filter(word => word.length > 2);
@@ -91,36 +91,68 @@ function analyzeDocumentsForRelevance(query: string, documents: any[]): any[] {
     const summaryLower = doc.summary.toLowerCase();
     const nameLower = doc.name.toLowerCase();
     
-    // Calculate relevance score
+    // Calculate comprehensive relevance score
     let relevanceScore = 0;
+    let matchDetails = {
+      exactMatches: 0,
+      summaryMatches: 0,
+      contentMatches: 0,
+      nameMatches: 0
+    };
     
-    // Check for exact matches
+    // Check for exact word matches
     queryWords.forEach(word => {
-      if (contentLower.includes(word)) relevanceScore += 2;
-      if (summaryLower.includes(word)) relevanceScore += 3;
-      if (nameLower.includes(word)) relevanceScore += 1;
-    });
-    
-    // Check for phrase matches
-    if (contentLower.includes(queryLower)) relevanceScore += 5;
-    if (summaryLower.includes(queryLower)) relevanceScore += 8;
-    
-    // Check for semantic similarity (simple keyword matching)
-    const semanticKeywords = ['research', 'study', 'analysis', 'data', 'findings', 'conclusion', 'method', 'result'];
-    semanticKeywords.forEach(keyword => {
-      if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
-        relevanceScore += 1;
+      if (contentLower.includes(word)) {
+        relevanceScore += 2;
+        matchDetails.contentMatches++;
+      }
+      if (summaryLower.includes(word)) {
+        relevanceScore += 4;
+        matchDetails.summaryMatches++;
+      }
+      if (nameLower.includes(word)) {
+        relevanceScore += 3;
+        matchDetails.nameMatches++;
       }
     });
+    
+    // Check for exact phrase matches (higher priority)
+    if (contentLower.includes(queryLower)) {
+      relevanceScore += 10;
+      matchDetails.exactMatches++;
+    }
+    if (summaryLower.includes(queryLower)) {
+      relevanceScore += 15;
+      matchDetails.exactMatches++;
+    }
+    
+    // Check for semantic similarity with expanded keywords
+    const semanticKeywords = [
+      'research', 'study', 'analysis', 'data', 'findings', 'conclusion', 'method', 'result',
+      'report', 'document', 'paper', 'article', 'summary', 'overview', 'details', 'information',
+      'statistics', 'figures', 'numbers', 'percentages', 'trends', 'patterns', 'insights'
+    ];
+    
+    semanticKeywords.forEach(keyword => {
+      if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
+        relevanceScore += 2;
+      }
+    });
+    
+    // Bonus for documents with substantial content
+    if (contentLower.length > 500) relevanceScore += 1;
+    if (summaryLower.length > 100) relevanceScore += 2;
     
     return {
       ...doc,
       relevanceScore,
-      isRelevant: relevanceScore > 0
+      matchDetails,
+      isRelevant: relevanceScore >= 3, // Higher threshold for relevance
+      confidence: relevanceScore >= 10 ? 'high' : relevanceScore >= 5 ? 'medium' : 'low'
     };
   }).filter(doc => doc.isRelevant)
     .sort((a, b) => b.relevanceScore - a.relevanceScore)
-    .slice(0, 3); // Limit to top 3 most relevant documents
+    .slice(0, 5); // Increased limit for better coverage
 }
 
 // Call Gemini API
@@ -234,20 +266,33 @@ async function callOpenAIAPI(prompt: string, documents: any[] = [], webResults: 
       });
     }
 
-    systemMessage += `\n\n**Instructions for this response:**
-- **PRIORITIZE DOCUMENTS**: If documents contain relevant information, base your answer primarily on that content
-- **REFERENCE SPECIFICALLY**: Always mention which document(s) you're referencing when using document content
-- **COMBINE SOURCES**: Use web search results to supplement document information with current context
-- **CLEAR SOURCING**: Always be explicit about your sources (documents vs. web vs. general knowledge)
-- **CONTEXT AWARENESS**: If you don't have enough context from documents, ask the user for more details
-- **FALLBACK STRATEGY**: If no relevant documents found, use web search results and clearly state this
-- **RESPONSE FORMAT**: Structure your response to clearly indicate what comes from documents vs. web search
+    systemMessage += `\n\n**CRITICAL RESPONSE INSTRUCTIONS:**
 
-**Response Guidelines:**
-1. Start with document-based information if available
-2. Add web search context if relevant and enabled
-3. If insufficient document context, ask for clarification
-4. Always cite your sources clearly`;
+**DOCUMENT PRIORITY SYSTEM:**
+1. **FIRST**: Check uploaded documents for relevant information
+2. **SECOND**: Only use web search if documents don't contain sufficient information
+3. **THIRD**: Ask for clarification if context is insufficient
+
+**RESPONSE FORMAT REQUIREMENTS:**
+- **If documents contain relevant info**: Start with "📄 **Based on your uploaded documents:**" followed by document-based answer
+- **If documents + web search**: Use "📄 **Based on your uploaded documents and web search:**"
+- **If only web search**: Start with "🌐 **I couldn't find specific information in your uploaded documents. Here's what I found on the internet:**"
+- **If insufficient context**: Ask "🤔 **I don't have enough context from the uploaded documents to answer your question fully. Could you provide more details?**"
+
+**DOCUMENT REFERENCING:**
+- Always mention specific document names when using their content
+- Quote relevant sections from documents when possible
+- Explain how document content relates to the user's question
+
+**WEB SEARCH INTEGRATION:**
+- Only use web search when documents don't provide sufficient information
+- Clearly separate document-based information from web-based information
+- Use web search to supplement, not replace, document content
+
+**CONTEXT HANDLING:**
+- If the question is too vague or requires more context, ask for clarification
+- Suggest uploading additional relevant documents if needed
+- Provide partial answers based on available information when possible`;
 
     const messages: Array<{
       role: 'system' | 'user' | 'assistant';
@@ -326,53 +371,96 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    console.log(`Processing request with provider: ${aiProvider}, searchWeb: ${searchWeb}`);
-    console.log(`Documents provided: ${documents.length}`);
-    console.log(`Chat history length: ${history.length}`);
+    console.log(`Processing chat request: "${message}"`);
+    console.log(`Documents available: ${documents.length}`);
+    console.log(`Search web enabled: ${searchWeb}`);
+    console.log(`AI Provider: ${aiProvider}`);
 
-    // Perform web search if requested
+    // Step 1: Analyze documents for relevance
+    const relevantDocuments = analyzeDocumentsForRelevance(message, documents);
+    console.log(`Found ${relevantDocuments.length} relevant documents`);
+
+    // Step 2: Determine response strategy based on document availability
+    let responseStrategy = 'web-only';
     let webResults: any[] = [];
-    if (searchWeb) {
-      try {
+
+    if (relevantDocuments.length > 0) {
+      responseStrategy = 'documents-first';
+      console.log('Using documents-first strategy');
+      
+      // Only search web if explicitly enabled and we have relevant documents
+      if (searchWeb) {
+        console.log('Searching web to supplement document information');
         webResults = await performWebSearch(message);
-        console.log(`Web search returned ${webResults.length} results`);
-      } catch (error) {
-        console.error('Web search failed:', error);
+      }
+    } else if (documents.length > 0) {
+      // Documents exist but none are relevant
+      responseStrategy = 'documents-irrelevant';
+      console.log('Documents exist but none are relevant to the query');
+      
+      if (searchWeb) {
+        console.log('Searching web as documents are not relevant');
+        webResults = await performWebSearch(message);
+      }
+    } else {
+      // No documents uploaded
+      responseStrategy = 'no-documents';
+      console.log('No documents uploaded, using web search only');
+      
+      if (searchWeb) {
+        console.log('Searching web as no documents are available');
+        webResults = await performWebSearch(message);
       }
     }
 
-    // Call appropriate AI provider
+    // Step 3: Generate response based on strategy
     let aiResponse: string;
     let documentsUsed: string[] = [];
-    
+    let confidence: number = 0.5;
+
     try {
       if (aiProvider === 'gemini') {
         // For Gemini, combine all context into a single prompt
         const allContext = [
-          ...documents.map(doc => `Document: ${doc.name}\nContent: ${doc.content}\nSummary: ${doc.summary}`),
+          ...relevantDocuments.map(doc => `Document: ${doc.name}\nContent: ${doc.content}\nSummary: ${doc.summary}`),
           ...webResults.map(result => `Web Result: ${result.title}\n${result.snippet}`)
         ].join('\n\n');
         
         aiResponse = await callGeminiAPI(message, allContext);
-        documentsUsed = documents.map(doc => doc.name);
+        documentsUsed = relevantDocuments.map(doc => doc.name);
       } else {
-        // For OpenAI, use the enhanced function
-        aiResponse = await callOpenAIAPI(message, documents, webResults, history);
-        documentsUsed = documents.map(doc => doc.name);
+        // For OpenAI, use the enhanced function with document-first strategy
+        aiResponse = await callOpenAIAPI(message, relevantDocuments, webResults, history);
+        documentsUsed = relevantDocuments.map(doc => doc.name);
       }
+
+      // Adjust confidence based on strategy
+      switch (responseStrategy) {
+        case 'documents-first':
+          confidence = Math.min(0.9, 0.5 + (relevantDocuments.length * 0.1));
+          break;
+        case 'documents-irrelevant':
+          confidence = 0.6;
+          break;
+        case 'no-documents':
+          confidence = 0.7;
+          break;
+        default:
+          confidence = 0.5;
+      }
+
     } catch (aiError) {
       console.error(`AI API error (${aiProvider}):`, aiError);
       
-      // Enhanced fallback response
-      aiResponse = `I apologize, but I encountered an error with the ${aiProvider} API. Let me provide what I can based on your question: "${message}"\n\n`;
+      // Enhanced fallback response based on strategy
+      aiResponse = `I apologize, but I encountered an error with the ${aiProvider} API. `;
       
-      if (documents.length > 0) {
-        aiResponse += `I have ${documents.length} document(s) available that might be relevant to your question. `;
-        aiResponse += `The documents include: ${documents.map(doc => doc.name).join(', ')}.\n\n`;
-        aiResponse += `To get a more detailed analysis, please try:\n`;
-        aiResponse += `• Rephrasing your question to be more specific\n`;
-        aiResponse += `• Uploading additional relevant documents\n`;
-        aiResponse += `• Checking your API key configuration\n`;
+      if (responseStrategy === 'documents-first') {
+        aiResponse += `I found ${relevantDocuments.length} relevant document(s) that could answer your question: ${relevantDocuments.map(doc => doc.name).join(', ')}. `;
+        aiResponse += `Please check your API key configuration and try again.`;
+      } else if (responseStrategy === 'documents-irrelevant') {
+        aiResponse += `You have ${documents.length} document(s) uploaded, but they don't seem directly relevant to your question. `;
+        aiResponse += `Please try rephrasing your question or uploading more relevant documents.`;
       } else {
         aiResponse += `This appears to be a research question that I can help you with. `;
         aiResponse += `To provide more specific assistance, you could upload relevant documents or try asking a more specific question.`;
@@ -390,12 +478,13 @@ export const handler: Handler = async (event) => {
     const result: ChatResponse = {
       response: aiResponse,
       documentsUsed: documentsUsed.length > 0 ? documentsUsed : undefined,
-      confidence: documents.length > 0 ? 0.9 : 0.7,
+      confidence,
       responseTime,
       sources: sources.length > 0 ? sources : undefined
     };
 
     console.log(`Response generated in ${responseTime}ms`);
+    console.log(`Strategy used: ${responseStrategy}`);
     console.log(`Documents used: ${documentsUsed.length}`);
     console.log(`Web results used: ${webResults.length}`);
 

@@ -309,15 +309,22 @@ export default function Index() {
       // Enhanced response handling with better context awareness
       let enhancedResponse = response.response;
       
-      // Add context information to the response
-      if (documentContext.length > 0 && response.documentsUsed && response.documentsUsed.length > 0) {
-        enhancedResponse = `📄 **Based on your uploaded documents and web search:**\n\n${response.response}`;
-      } else if (documentContext.length > 0 && searchWeb) {
-        enhancedResponse = `🌐 **I couldn't find specific information in your uploaded documents, but here's what I found on the internet:**\n\n${response.response}`;
-      } else if (documentContext.length === 0 && searchWeb) {
-        enhancedResponse = `🌐 **Based on web search:**\n\n${response.response}`;
-      } else if (documentContext.length > 0 && !searchWeb) {
-        enhancedResponse = `📄 **Based on your uploaded documents:**\n\n${response.response}`;
+      // Check if the AI already added context prefixes (from our enhanced backend)
+      const hasContextPrefix = response.response.startsWith('📄') || 
+                              response.response.startsWith('🌐') || 
+                              response.response.startsWith('🤔');
+      
+      if (!hasContextPrefix) {
+        // Add context information to the response if not already present
+        if (documentContext.length > 0 && response.documentsUsed && response.documentsUsed.length > 0) {
+          enhancedResponse = `📄 **Based on your uploaded documents and web search:**\n\n${response.response}`;
+        } else if (documentContext.length > 0 && searchWeb) {
+          enhancedResponse = `🌐 **I couldn't find specific information in your uploaded documents, but here's what I found on the internet:**\n\n${response.response}`;
+        } else if (documentContext.length === 0 && searchWeb) {
+          enhancedResponse = `🌐 **Based on web search:**\n\n${response.response}`;
+        } else if (documentContext.length > 0 && !searchWeb) {
+          enhancedResponse = `📄 **Based on your uploaded documents:**\n\n${response.response}`;
+        }
       }
 
       const assistantMessage: Message = {
