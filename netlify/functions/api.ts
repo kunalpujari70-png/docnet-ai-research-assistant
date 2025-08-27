@@ -94,7 +94,7 @@ async function performWebSearch(query: string): Promise<any[]> {
   }
 }
 
-// Ultra-optimized document analysis with micro-tasking and performance monitoring
+// Ultra-fast document analysis with optimized processing
 async function analyzeDocumentsForRelevance(query: string, documents: any[]): Promise<any[]> {
   const startTime = performance.now();
   const queryLower = query.toLowerCase();
@@ -119,24 +119,25 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
     'history', 'historical', 'ancient', 'temple', 'religious', 'sacred', 'pilgrimage'
   ]);
   
-  // Micro-task processing with smaller chunks and more frequent yields
-  const microChunkSize = 1; // Process one document at a time
+  // Process documents in parallel batches for better performance
+  const batchSize = Math.min(5, documents.length);
   const results = [];
-  let processedCount = 0;
   
-  for (let i = 0; i < documents.length; i += microChunkSize) {
-    const chunk = documents.slice(i, i + microChunkSize);
+  for (let i = 0; i < documents.length; i += batchSize) {
+    const batch = documents.slice(i, i + batchSize);
     
-    // Process each document individually with immediate yielding
-    for (const doc of chunk) {
-      // Yield control after every document to prevent blocking
-      await new Promise(resolve => setTimeout(resolve, 0));
+    // Process batch in parallel with timeout
+    const batchPromises = batch.map(async (doc, index) => {
+      // Add small delay to prevent blocking
+      if (index > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1));
+      }
       
       const contentLower = doc.content.toLowerCase();
       const summaryLower = doc.summary.toLowerCase();
       const nameLower = doc.name.toLowerCase();
       
-      // Calculate relevance score with optimized logic
+      // Fast relevance calculation
       let relevanceScore = 0;
       let matchDetails = {
         exactMatches: 0,
@@ -146,7 +147,28 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
         partialMatches: 0
       };
       
-      // Optimized word matching with early exit for high-scoring documents
+      // Quick exact phrase check first (highest priority)
+      if (contentLower.includes(queryLower)) {
+        relevanceScore += 20;
+        matchDetails.exactMatches++;
+      }
+      if (summaryLower.includes(queryLower)) {
+        relevanceScore += 25;
+        matchDetails.exactMatches++;
+      }
+      
+      // Early exit for high-scoring documents
+      if (relevanceScore >= 25) {
+        return {
+          ...doc,
+          relevanceScore,
+          matchDetails,
+          isRelevant: true,
+          confidence: 'high'
+        };
+      }
+      
+      // Word matching with early exit
       for (const word of queryWords) {
         if (contentLower.includes(word)) {
           relevanceScore += 3;
@@ -161,36 +183,15 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
           matchDetails.nameMatches++;
         }
         
-        // Early exit if document is already highly relevant
-        if (relevanceScore >= 25) {
-          break;
-        }
+        // Early exit if already relevant
+        if (relevanceScore >= 15) break;
       }
       
-      // Check for exact phrase matches (highest priority)
-      if (contentLower.includes(queryLower)) {
-        relevanceScore += 20;
-        matchDetails.exactMatches++;
-      }
-      if (summaryLower.includes(queryLower)) {
-        relevanceScore += 25;
-        matchDetails.exactMatches++;
-      }
-      
-      // Optimized partial phrase matching
-      const queryParts = queryLower.split(/\s+/);
-      if (queryParts.length > 1) {
-        const matchingParts = queryParts.filter(part => contentLower.includes(part));
-        if (matchingParts.length >= Math.ceil(queryParts.length * 0.7)) {
-          relevanceScore += 15;
-          matchDetails.partialMatches++;
-        }
-      }
-      
-      // Optimized semantic keyword matching
+      // Quick semantic keyword check
       for (const keyword of semanticKeywords) {
         if (queryLower.includes(keyword) && (contentLower.includes(keyword) || summaryLower.includes(keyword))) {
           relevanceScore += 3;
+          if (relevanceScore >= 15) break;
         }
       }
       
@@ -198,21 +199,31 @@ async function analyzeDocumentsForRelevance(query: string, documents: any[]): Pr
       if (contentLower.length > 500) relevanceScore += 2;
       if (summaryLower.length > 100) relevanceScore += 3;
       
-      const result = {
+      return {
         ...doc,
         relevanceScore,
         matchDetails,
         isRelevant: relevanceScore >= 2,
         confidence: relevanceScore >= 15 ? 'high' : relevanceScore >= 8 ? 'medium' : 'low'
       };
+    });
+    
+    // Wait for batch with timeout
+    const batchTimeout = new Promise<any[]>((_, reject) => {
+      setTimeout(() => reject(new Error('Document analysis timeout')), 10000); // 10 second timeout per batch
+    });
+    
+    try {
+      const batchResults = await Promise.race([
+        Promise.all(batchPromises),
+        batchTimeout
+      ]);
+      results.push(...batchResults);
       
-      results.push(result);
-      processedCount++;
-      
-      // Log progress every 5 documents
-      if (processedCount % 5 === 0) {
-        console.log(`Processed ${processedCount}/${documents.length} documents...`);
-      }
+      console.log(`Processed batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(documents.length / batchSize)}`);
+    } catch (error) {
+      console.error(`Batch processing error:`, error);
+      // Continue with next batch
     }
   }
   

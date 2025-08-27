@@ -80,10 +80,34 @@ class ProductionAPIService {
 
   // Chat functionality
   async sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-    return this.makeRequest<ChatResponse>('/chat', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
+    try {
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      const response = await fetch(`${this.baseURL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Chat API error:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout - the server took too long to respond');
+      }
+      throw error;
+    }
   }
 
   // File upload and processing

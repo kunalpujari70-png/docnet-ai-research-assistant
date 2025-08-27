@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService, ChatRequest, ChatResponse } from '../services/api';
+import { documentProcessor } from '../services/documentProcessor';
 import Navigation from '../components/Navigation';
 import './Index.css';
 
@@ -10,6 +11,18 @@ const debounce = (func: Function, wait: number) => {
   return (...args: any[]) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(null, args), wait);
+  };
+};
+
+// Throttle utility function for UI updates
+const throttle = (func: Function, limit: number) => {
+  let inThrottle: boolean;
+  return (...args: any[]) => {
+    if (!inThrottle) {
+      func.apply(null, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
   };
 };
 
@@ -57,6 +70,7 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState<string>('');
   const [processingTime, setProcessingTime] = useState<number>(0);
+  const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [userFiles, setUserFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
@@ -135,6 +149,13 @@ export default function Index() {
       }
     }
   }, [chatSessions]);
+
+  // Cleanup document processor on unmount
+  useEffect(() => {
+    return () => {
+      documentProcessor.destroy();
+    };
+  }, []);
 
   // Save chat sessions to localStorage
   useEffect(() => {
@@ -304,6 +325,7 @@ export default function Index() {
     setIsLoading(true);
     setLoadingStage('Preparing request...');
     setProcessingTime(0);
+    setProcessingProgress(0);
 
     // Add a small delay to prevent UI blocking and show loading state
     await new Promise(resolve => setTimeout(resolve, 50));
@@ -324,18 +346,39 @@ export default function Index() {
         content: msg.content
       }));
 
-      setLoadingStage('Analyzing documents...');
+      // Use Web Worker for document processing if available
+      let relevantDocuments = documentContext;
       
-      // Enhanced request with better context handling
+      if (documentContext.length > 0) {
+        setLoadingStage('Analyzing documents...');
+        
+        try {
+          // Process documents using Web Worker with progress tracking
+          relevantDocuments = await documentProcessor.processDocuments(
+            documentContext,
+            inputValue,
+            (progress) => {
+              setProcessingProgress(progress);
+              setLoadingStage(`Analyzing documents... ${progress}%`);
+            }
+          );
+        } catch (error) {
+          console.warn('Web Worker processing failed, using fallback:', error);
+          // Fallback to original documents
+          relevantDocuments = documentContext;
+        }
+      }
+      
+      setLoadingStage('Searching for information...');
+      
+      // Enhanced request with processed documents
       const request: ChatRequest = {
         message: inputValue,
-        documents: documentContext,
+        documents: relevantDocuments,
         history: chatHistory,
         aiProvider: selectedAIProvider as 'openai' | 'gemini',
-        searchWeb: searchWeb || documentContext.length === 0 // Always search web if no documents
+        searchWeb: searchWeb || relevantDocuments.length === 0 // Always search web if no documents
       };
-
-      setLoadingStage('Searching for information...');
       
       // Add timeout to prevent hanging requests
       const timeoutPromise = new Promise<ChatResponse>((_, reject) => {
@@ -468,6 +511,7 @@ export default function Index() {
         setProcessingTime(totalTime);
         setIsLoading(false);
         setLoadingStage('');
+        setProcessingProgress(0);
       }
   }, [inputValue, isLoading, userFiles, messages, currentSessionId, selectedAIProvider, searchWeb]);
 
@@ -825,6 +869,14 @@ export default function Index() {
                 <div className="message-content">
                   <div className="loading-indicator">
                     <span>{loadingStage || 'AI is thinking...'}</span>
+                    {processingProgress > 0 && (
+                      <div className="progress-bar">
+                        <div 
+                          className="progress-fill" 
+                          style={{ width: `${processingProgress}%` }}
+                        ></div>
+                      </div>
+                    )}
                     <div className="typing-dots">
                       <span></span>
                       <span></span>
