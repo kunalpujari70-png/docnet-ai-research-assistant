@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { FileService } from '../services/supabase';
 
 interface Message {
   id: string;
@@ -7,8 +8,27 @@ interface Message {
   content: string;
   timestamp: Date;
   responseTime?: number;
-  sources?: string[];
+  sources?: {
+    documents: DocumentSource[];
+    web: WebSource[];
+  };
   evidenceType?: 'documents' | 'web' | 'mixed';
+  noDocEvidence?: boolean;
+}
+
+interface DocumentSource {
+  id: string;
+  title: string;
+  chunk: string;
+  relevance: number;
+  chunkId: string;
+}
+
+interface WebSource {
+  title: string;
+  snippet: string;
+  url: string;
+  source: string;
 }
 
 interface ChatSession {
@@ -31,6 +51,7 @@ export default function Chat() {
   const [showSources, setShowSources] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [userFiles, setUserFiles] = useState<any[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -40,6 +61,20 @@ export default function Chat() {
     { id: 'openai', name: 'OpenAI GPT-4' },
     { id: 'gemini', name: 'Google Gemini' }
   ];
+
+  // Load user files on component mount
+  useEffect(() => {
+    if (user) {
+      loadUserFiles();
+    }
+  }, [user]);
+
+  const loadUserFiles = async () => {
+    if (user) {
+      const files = await FileService.getUserFiles(user.id);
+      setUserFiles(files);
+    }
+  };
 
   // Auto-scroll to bottom
   const scrollToBottom = useCallback(() => {
@@ -75,9 +110,36 @@ export default function Chat() {
     }
   }, []);
 
+  // Call RAG API
+  const callRAGAPI = async (query: string): Promise<any> => {
+    try {
+      const response = await fetch('/.netlify/functions/ask', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+          userId: user?.id || 'guest',
+          webSearch: searchWeb,
+          aiProvider: selectedAIProvider,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('RAG API call failed:', error);
+      throw error;
+    }
+  };
+
   // Handle submit
   const handleSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !user) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -91,24 +153,33 @@ export default function Chat() {
     setIsLoading(true);
 
     try {
-      // TODO: Implement RAG pipeline here
-      // 1. Vector search for relevant chunks
-      // 2. Web search if enabled and no doc evidence
-      // 3. Generate response with citations
-      
-      // Simulate API call for now
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Call RAG API
+      const ragResponse = await callRAGAPI(userMessage.content);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I understand you're asking about "${userMessage.content}". This is a placeholder response while we implement the RAG pipeline.`,
+        content: ragResponse.answer,
         timestamp: new Date(),
-        responseTime: 1000,
-        evidenceType: 'web'
+        responseTime: ragResponse.responseTime,
+        sources: ragResponse.sources,
+        evidenceType: ragResponse.evidenceType,
+        noDocEvidence: ragResponse.noDocEvidence
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Save chat session
+      if (currentSession) {
+        const updatedSession = {
+          ...currentSession,
+          messages: [...currentSession.messages, userMessage, assistantMessage],
+          updatedAt: new Date()
+        };
+        setCurrentSession(updatedSession);
+        await FileService.saveChatSession(updatedSession, user.id);
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage: Message = {
@@ -122,7 +193,7 @@ export default function Chat() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, isLoading]);
+  }, [inputValue, isLoading, user, searchWeb, selectedAIProvider, currentSession]);
 
   // Handle message editing
   const editMessage = useCallback((messageId: string, newContent: string) => {
@@ -202,14 +273,41 @@ export default function Chat() {
                 </div>
               )}
 
-              {message.sources && message.sources.length > 0 && showSources && (
+              {message.noDocEvidence && (
+                <div className="mt-2 text-xs text-orange-600">
+                  ⚠️ No relevant document evidence found, using web sources
+                </div>
+              )}
+
+              {message.sources && showSources && (
                 <div className="mt-3 p-3 bg-white bg-opacity-10 rounded-lg">
                   <div className="text-xs font-medium mb-2">Sources:</div>
-                  <ul className="text-xs space-y-1">
-                    {message.sources.map((source, index) => (
-                      <li key={index}>{source}</li>
-                    ))}
-                  </ul>
+                  
+                  {message.sources.documents && message.sources.documents.length > 0 && (
+                    <div className="mb-2">
+                      <div className="text-xs font-medium text-blue-600">📄 Documents:</div>
+                      <ul className="text-xs space-y-1">
+                        {message.sources.documents.map((doc, index) => (
+                          <li key={index} className="text-blue-500">
+                            {doc.title} (relevance: {(doc.relevance * 100).toFixed(1)}%)
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {message.sources.web && message.sources.web.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium text-green-600">🌐 Web Sources:</div>
+                      <ul className="text-xs space-y-1">
+                        {message.sources.web.map((web, index) => (
+                          <li key={index} className="text-green-500">
+                            {web.title} - {web.source}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -279,6 +377,12 @@ export default function Chat() {
                 ))}
               </select>
             </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">
+                📄 {userFiles.length} document(s) uploaded
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-4">
@@ -314,7 +418,7 @@ export default function Chat() {
             <div className="max-w-3xl px-4 py-3 bg-gray-100 text-gray-900 rounded-2xl">
               <div className="flex items-center gap-3">
                 <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
-                <span className="text-sm">Processing...</span>
+                <span className="text-sm">Searching documents and generating response...</span>
               </div>
             </div>
           </div>
