@@ -20,6 +20,8 @@
     "build:client": "vite build",
     "build:server": "vite build --config vite.config.server.ts",
     "build:netlify": "npm run build:client",
+    "deploy": "npm run build:netlify && netlify deploy --prod --dir=dist/spa",
+    "deploy:preview": "npm run build:netlify && netlify deploy --dir=dist/spa",
     "start": "node dist/server/node-build.mjs",
     "test": "vitest --run",
     "format.fix": "prettier --write .",
