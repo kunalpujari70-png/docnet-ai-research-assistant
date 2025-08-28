@@ -10,7 +10,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="DocNet" />
     <meta name="msapplication-TileColor" content="#3b82f6" />
-    <meta name="msapplication-config" content="/browserconfig.xml" />
     
     <!-- PWA Icons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -20,10 +19,7 @@
     <link rel="manifest" href="/manifest.json" />
     
     <title>DocNet - Document & Internet Research Portal</title>
-    <!-- Inter font for professional typography -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <!-- Chrome compatibility fixes -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
@@ -35,22 +31,13 @@
     <meta name="format-detection" content="telephone=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    
-    <!-- Chrome-specific preload optimizations -->
-    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" as="script" />
-    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js" as="script" />
-    
-    <!-- Chrome-specific DNS prefetch -->
-    <link rel="dns-prefetch" href="//cdnjs.cloudflare.com" />
-    <link rel="dns-prefetch" href="//fonts.googleapis.com" />
-    <link rel="dns-prefetch" href="//fonts.gstatic.com" />
   </head>
 
   <body>
     <div id="root"></div>
     <script type="module" src="/client/main.tsx"></script>
     <script>
-      // Chrome-specific performance optimizations
+      // Simple performance optimizations
       (function() {
         // Disable service worker for now to fix Chrome issues
         if ('serviceWorker' in navigator) {
@@ -64,49 +51,6 @@
         // Chrome-specific optimizations
         if (/Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent)) {
           document.documentElement.classList.add('chrome-browser');
-          
-          // Chrome-specific performance hints
-          if ('connection' in navigator) {
-            const connection = navigator.connection;
-            if (connection.effectiveType === 'slow-2g' || connection.effectiveType === '2g') {
-              document.documentElement.classList.add('slow-connection');
-            }
-          }
-          
-          // Chrome-specific memory management
-          if ('memory' in performance) {
-            const memory = performance.memory;
-            if (memory.usedJSHeapSize > memory.jsHeapSizeLimit * 0.8) {
-              console.warn('Chrome: High memory usage detected');
-            }
-          }
-          
-          // Chrome-specific requestIdleCallback polyfill
-          if (!('requestIdleCallback' in window)) {
-            window.requestIdleCallback = function(callback, options) {
-            const start = Date.now();
-            return setTimeout(function() {
-              callback({
-                didTimeout: false,
-                timeRemaining: function() {
-                  return Math.max(0, 50 - (Date.now() - start));
-                }
-              });
-            }, 1);
-          };
-          }
-          
-          // Chrome-specific requestAnimationFrame optimization
-          const originalRAF = window.requestAnimationFrame;
-          window.requestAnimationFrame = function(callback) {
-            return originalRAF.call(window, function(timestamp) {
-              try {
-                callback(timestamp);
-              } catch (error) {
-                console.error('Chrome: requestAnimationFrame error:', error);
-              }
-            });
-          };
         }
         
         // Mobile-specific enhancements
@@ -114,44 +58,15 @@
           document.body.classList.add('mobile-device');
         }
         
-        // Chrome-specific error handling
+        // Error handling
         window.addEventListener('error', function(event) {
-          if (/Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent)) {
-            console.error('Chrome-specific error:', event.error);
-          }
+          console.error('Application error:', event.error);
         });
         
-        // Chrome-specific unhandled promise rejection handling
+        // Unhandled promise rejection handling
         window.addEventListener('unhandledrejection', function(event) {
-          if (/Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent)) {
-            console.error('Chrome-specific unhandled promise rejection:', event.reason);
-          }
+          console.error('Unhandled promise rejection:', event.reason);
         });
-        
-        // Chrome-specific performance monitoring
-        if (/Chrome/.test(navigator.userAgent) && !/Edge/.test(navigator.userAgent)) {
-          let lastTime = performance.now();
-          let frameCount = 0;
-          
-          function checkPerformance() {
-            const currentTime = performance.now();
-            const deltaTime = currentTime - lastTime;
-            frameCount++;
-            
-            if (deltaTime >= 1000) {
-              const fps = Math.round((frameCount * 1000) / deltaTime);
-              if (fps < 30) {
-                console.warn('Chrome: Low FPS detected:', fps);
-              }
-              frameCount = 0;
-              lastTime = currentTime;
-            }
-            
-            requestAnimationFrame(checkPerformance);
-          }
-          
-          requestAnimationFrame(checkPerformance);
-        }
       })();
     </script>
   </body>
