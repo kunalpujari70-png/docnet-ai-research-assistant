@@ -64,7 +64,7 @@ export default function Chat() {
 
   // Load user files on component mount
   useEffect(() => {
-    if (user) {
+    if (user && !user.isGuest) {
       loadUserFiles();
     }
   }, [user]);
@@ -106,11 +106,11 @@ export default function Chat() {
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (inputValue.trim() && !isLoading && user) {
+      if (inputValue.trim() && !isLoading) {
         handleSubmit();
       }
     }
-  }, [inputValue, isLoading, user, handleSubmit]);
+  }, [inputValue, isLoading, handleSubmit]);
 
   // Call RAG API
   const callRAGAPI = async (query: string): Promise<any> => {
@@ -141,7 +141,7 @@ export default function Chat() {
 
   // Handle submit
   const handleSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isLoading || !user) return;
+    if (!inputValue.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -171,16 +171,16 @@ export default function Chat() {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Save chat session
-      if (currentSession) {
-        const updatedSession = {
-          ...currentSession,
-          messages: [...currentSession.messages, userMessage, assistantMessage],
-          updatedAt: new Date()
-        };
-        setCurrentSession(updatedSession);
-        await FileService.saveChatSession(updatedSession, user.id);
-      }
+        // Save chat session (only for authenticated users)
+  if (currentSession && user && !user.isGuest) {
+    const updatedSession = {
+      ...currentSession,
+      messages: [...currentSession.messages, userMessage, assistantMessage],
+      updatedAt: new Date()
+    };
+    setCurrentSession(updatedSession);
+    await FileService.saveChatSession(updatedSession, user.id);
+  }
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -195,7 +195,7 @@ export default function Chat() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputValue, isLoading, user, searchWeb, selectedAIProvider, currentSession]);
+  }, [inputValue, isLoading, searchWeb, selectedAIProvider, currentSession, user]);
 
   // Handle message editing
   const editMessage = useCallback((messageId: string, newContent: string) => {

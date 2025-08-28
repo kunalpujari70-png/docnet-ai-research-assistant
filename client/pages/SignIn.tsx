@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
-import { AuthService } from '../services/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import './SignIn.css';
 
 export default function SignIn() {
@@ -13,9 +13,16 @@ export default function SignIn() {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = useTheme();
+  const { signIn, user } = useAuth();
   
   // Get the page user was trying to access
   const from = location.state?.from?.pathname || '/';
+
+  // If user is already authenticated, redirect them
+  if (user) {
+    navigate(from, { replace: true });
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,14 +31,14 @@ export default function SignIn() {
     setIsLoading(true);
     setError('');
 
-        try {
+    try {
       if (isSignUp) {
-        await AuthService.signUp(email, password);
-        setError('Check your email for a confirmation link!');
-        setIsSignUp(false); // Switch back to sign in mode
+        // For now, just show a message since we don't have real signup
+        setError('Sign up functionality is not yet implemented. Please use guest access or contact support.');
+        setIsSignUp(false);
       } else {
-        await AuthService.signIn(email, password);
-        navigate(from);
+        await signIn(email, password);
+        navigate(from, { replace: true });
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Authentication failed. Please try again.');
@@ -141,16 +148,16 @@ export default function SignIn() {
           </button>
         </div>
 
-                 <div className="features-preview">
-           <h3>What you'll get:</h3>
-           <ul className="features-list">
-             <li>AI-powered research assistance</li>
-             <li>Document analysis and insights</li>
-             <li>Advanced search capabilities</li>
-             <li>Mobile-optimized experience</li>
-             <li>Dark/Light theme support</li>
-           </ul>
-         </div>
+        <div className="features-preview">
+          <h3>What you'll get:</h3>
+          <ul className="features-list">
+            <li>AI-powered research assistance</li>
+            <li>Document analysis and insights</li>
+            <li>Advanced search capabilities</li>
+            <li>Mobile-optimized experience</li>
+            <li>Dark/Light theme support</li>
+          </ul>
+        </div>
       </div>
     </div>
   );
