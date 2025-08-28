@@ -30,6 +30,7 @@ export default function SignIn() {
     
     setIsLoading(true);
     setError('');
+    console.log('Attempting to sign in with:', { email, password });
 
     try {
       if (isSignUp) {
@@ -37,10 +38,13 @@ export default function SignIn() {
         setError('Sign up functionality is not yet implemented. Please use guest access or contact support.');
         setIsSignUp(false);
       } else {
+        console.log('Calling signIn function...');
         await signIn(email, password);
+        console.log('Sign in completed, navigating to:', from);
         navigate(from, { replace: true });
       }
     } catch (error) {
+      console.error('Sign in error:', error);
       setError(error instanceof Error ? error.message : 'Authentication failed. Please try again.');
     } finally {
       setIsLoading(false);

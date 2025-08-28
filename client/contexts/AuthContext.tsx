@@ -89,32 +89,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       setError(null);
+      setLoading(true);
       
-      // Try real Supabase sign in first
+      // Call AuthService.signIn which handles both real and mock authentication
       const authUser = await AuthService.signIn(email, password);
+      
       if (authUser) {
         setUser(authUser);
-        return;
+        console.log('User signed in successfully:', authUser);
+      } else {
+        throw new Error('Sign in failed - no user returned');
       }
-      
-      // Fallback to mock sign in for development
-      const userSession = {
-        email,
-        isAuthenticated: true,
-        isGuest: false,
-        timestamp: new Date().toISOString()
-      };
-      localStorage.setItem('userSession', JSON.stringify(userSession));
-      
-      setUser({
-        id: 'mock-user-id',
-        email: email,
-        isGuest: false,
-      });
     } catch (error) {
       console.error('Error signing in:', error);
       setError('Failed to sign in. Please check your credentials and try again.');
       setUser(null);
+    } finally {
+      setLoading(false);
     }
   };
 
