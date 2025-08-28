@@ -161,13 +161,22 @@ router.post('/chat', async (req, res) => {
       }
     }
 
-    // Get web search results if requested
+    // Get web search results if requested AND no relevant documents found
     let webContext = '';
     let webResults: any[] = [];
-    if (searchWeb) {
+    if (searchWeb && relevantDocuments.length === 0) {
+      console.log('No relevant documents found, performing web search as fallback...');
       webResults = await performWebSearch(prompt);
       if (webResults.length > 0) {
-        webContext = `\n\nWEB SEARCH RESULTS:\n${webResults.map(result => 
+        webContext = `\n\nWEB SEARCH RESULTS (FALLBACK - NO DOCUMENTS FOUND):\n${webResults.map(result => 
+          `- ${result.title}: ${result.snippet}`
+        ).join('\n')}`;
+      }
+    } else if (searchWeb && relevantDocuments.length > 0) {
+      console.log('Relevant documents found, web search will be used as supplementary information only');
+      webResults = await performWebSearch(prompt);
+      if (webResults.length > 0) {
+        webContext = `\n\nSUPPLEMENTARY WEB SEARCH RESULTS:\n${webResults.map(result => 
           `- ${result.title}: ${result.snippet}`
         ).join('\n')}`;
       }
@@ -235,19 +244,26 @@ Welcome them enthusiastically to DocNet! Explain how you combine documents with 
 ## **Document Context:**
 ${relevantDocuments.length > 0 ? `You have access to ${relevantDocuments.length} uploaded document(s). Use this context to provide more relevant, specific, and insightful answers. Reference specific parts of the documents when appropriate.` : 'No documents are currently uploaded. You can work with general research questions or suggest uploading relevant documents for more targeted assistance.'}
 
-## **Smart Source Attribution Guidelines:**
+## **CRITICAL DOCUMENT PRIORITY GUIDELINES:**
 
-### 📋 **When Documents Are Available:**
-- **ALWAYS check uploaded documents first** for relevant information
-- **Combine document insights with web knowledge** when both are available
-- **Clearly indicate** which parts come from documents vs. web sources
-- **Use document content as primary source** when it directly answers the question
+### 📋 **DOCUMENT-FIRST APPROACH (HIGHEST PRIORITY):**
+- **ALWAYS prioritize uploaded documents over web search results**
+- **Base your answer primarily on document content** when available
+- **Use web search only as supplementary information** to enhance document insights
+- **Clearly indicate when information comes from documents vs. web sources**
+- **If documents contain the answer, lead with that information**
 
-### 🌐 **When No Relevant Documents Found:**
-- **Explicitly state** that no supporting data was found in uploaded documents
-- **Clarify** that your response is based on general knowledge/web sources
-- **Suggest** uploading relevant documents for more specific analysis
-- **Example**: "I couldn't find specific information about this in your uploaded documents, so I'm providing general knowledge..."
+### 🌐 **WEB SEARCH AS SUPPLEMENT ONLY:**
+- **Only use web search when documents don't contain relevant information**
+- **When both documents and web results are available, lead with document content**
+- **Use web search to add current context, recent developments, or additional perspectives**
+- **Never prioritize web search over document content when both are available**
+
+### 📄 **DOCUMENT ANALYSIS STRATEGY:**
+- **Thoroughly analyze all uploaded documents for relevant information**
+- **Extract specific quotes, data points, and insights from documents**
+- **Cross-reference information across multiple documents when available**
+- **Provide page numbers, sections, or document names when referencing content**
 
 ### 🔍 **Smart Response Strategy:**
 - **Analyze the query** - is it asking about specific uploaded content or general knowledge?

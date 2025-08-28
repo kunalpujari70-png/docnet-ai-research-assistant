@@ -64,10 +64,11 @@ export const handleGeminiChat: RequestHandler = async (req, res) => {
       console.error("Database search error:", dbError);
     }
 
-    // Get web search results if requested
+    // Get web search results if requested AND no relevant documents found
     let webContext = "";
     let webResults: any[] = [];
-    if (searchWeb) {
+    if (searchWeb && relevantDocuments.length === 0) {
+      console.log('No relevant documents found, performing web search as fallback...');
       try {
         const webResponse = await fetch(`http://localhost:${process.env.PORT || 8080}/api/web-search`, {
           method: 'POST',
@@ -79,7 +80,28 @@ export const handleGeminiChat: RequestHandler = async (req, res) => {
           const webData = await webResponse.json();
           webResults = webData.results || [];
           if (webResults.length > 0) {
-            webContext = `\n\nCurrent web research:\n${webResults.map(result => 
+            webContext = `\n\nWEB SEARCH RESULTS (FALLBACK - NO DOCUMENTS FOUND):\n${webResults.map(result => 
+              `- ${result.title}: ${result.snippet} (Source: ${result.source})`
+            ).join('\n')}`;
+          }
+        }
+      } catch (webError) {
+        console.error("Web search error:", webError);
+      }
+    } else if (searchWeb && relevantDocuments.length > 0) {
+      console.log('Relevant documents found, web search will be used as supplementary information only');
+      try {
+        const webResponse = await fetch(`http://localhost:${process.env.PORT || 8080}/api/web-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: prompt, maxResults: 3 })
+        });
+        
+        if (webResponse.ok) {
+          const webData = await webResponse.json();
+          webResults = webData.results || [];
+          if (webResults.length > 0) {
+            webContext = `\n\nSUPPLEMENTARY WEB SEARCH RESULTS:\n${webResults.map(result => 
               `- ${result.title}: ${result.snippet} (Source: ${result.source})`
             ).join('\n')}`;
           }
@@ -89,15 +111,19 @@ export const handleGeminiChat: RequestHandler = async (req, res) => {
       }
     }
 
-    // Smart unified prompt that combines everything
+    // Smart unified prompt that combines everything - DOCUMENT FIRST APPROACH
     const enhancedPrompt = `You are a comprehensive AI research assistant. Please provide a detailed, well-structured answer that PRIORITIZES the uploaded document content over web search results.
 
 User Question: ${prompt}
 
-CRITICAL INSTRUCTIONS:
+CRITICAL DOCUMENT-FIRST INSTRUCTIONS:
 1. ALWAYS prioritize and use information from the uploaded documents first
 2. If the documents contain relevant information, base your answer primarily on that content
 3. Only use web search results to supplement or add current context to the document information
+4. When both documents and web results are available, lead with document content
+5. Clearly indicate which information comes from documents vs. web sources
+6. Extract specific quotes, data points, and insights from documents
+7. Cross-reference information across multiple documents when available
 4. If the documents don't contain relevant information, then use web search results
 5. Provide a comprehensive, well-organized response with clear sections
 6. Cite sources when possible (documents first, then web search)

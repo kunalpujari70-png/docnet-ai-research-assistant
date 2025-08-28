@@ -539,13 +539,13 @@ export default function Index() {
       
       setStateOptimized(setLoadingStage, 'Searching for information...');
       
-      // Enhanced request with processed documents
+      // Enhanced request with processed documents - PRIORITIZE DOCUMENTS OVER WEB SEARCH
       const request: ChatRequest = {
         message: inputValue,
         documents: relevantDocuments,
         history: chatHistory,
         aiProvider: selectedAIProvider as 'openai' | 'gemini',
-        searchWeb: searchWeb || relevantDocuments.length === 0 // Always search web if no documents
+        searchWeb: searchWeb && relevantDocuments.length === 0 // Only search web if explicitly requested AND no documents available
       };
       
       // Add timeout to prevent hanging requests
