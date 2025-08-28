@@ -106,9 +106,11 @@ export default function Chat() {
   const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      if (inputValue.trim() && !isLoading && user) {
+        handleSubmit();
+      }
     }
-  }, []);
+  }, [inputValue, isLoading, user, handleSubmit]);
 
   // Call RAG API
   const callRAGAPI = async (query: string): Promise<any> => {
