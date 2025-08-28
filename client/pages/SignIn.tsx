@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
-import { AuthService } from '../services/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import './SignIn.css';
 
 export default function SignIn() {
@@ -13,6 +13,7 @@ export default function SignIn() {
   const navigate = useNavigate();
   const location = useLocation();
   const { theme } = useTheme();
+  const { signIn, error: authError, clearError } = useAuth();
   
   // Get the page user was trying to access
   const from = location.state?.from?.pathname || '/';
@@ -23,14 +24,15 @@ export default function SignIn() {
     
     setIsLoading(true);
     setError('');
+    clearError();
 
-        try {
+    try {
       if (isSignUp) {
-        await AuthService.signUp(email, password);
-        setError('Check your email for a confirmation link!');
+        // For now, just show a message since we're using mock auth
+        setError('Sign up is not available in demo mode. Please use sign in or guest access.');
         setIsSignUp(false); // Switch back to sign in mode
       } else {
-        await AuthService.signIn(email, password);
+        await signIn(email, password);
         navigate(from);
       }
     } catch (error) {
@@ -40,17 +42,32 @@ export default function SignIn() {
     }
   };
 
-  const handleGuestAccess = () => {
-    const guestSession = {
-      email: 'guest@example.com',
-      isAuthenticated: true,
-      isGuest: true,
-      timestamp: new Date().toISOString()
-    };
-    localStorage.setItem('userSession', JSON.stringify(guestSession));
-    
-    // Force a page reload to ensure the auth context picks up the new session
-    window.location.href = from;
+  const handleGuestAccess = async () => {
+    try {
+      setIsLoading(true);
+      // Create a mock guest user
+      const guestUser = {
+        id: 'guest-user',
+        email: 'guest@example.com',
+        isGuest: true,
+      };
+      
+      // Store guest session
+      const guestSession = {
+        email: 'guest@example.com',
+        isAuthenticated: true,
+        isGuest: true,
+        timestamp: new Date().toISOString()
+      };
+      localStorage.setItem('userSession', JSON.stringify(guestSession));
+      
+      // Navigate to the intended page
+      navigate(from);
+    } catch (error) {
+      setError('Failed to access as guest. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -95,9 +112,9 @@ export default function SignIn() {
             />
           </div>
 
-          {error && (
+          {(error || authError) && (
             <div className="error-message">
-              {error}
+              {error || authError}
             </div>
           )}
 
