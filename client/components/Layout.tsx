@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import './Layout.css';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -34,14 +33,14 @@ export default function Layout({ children, currentPage = 'home' }: LayoutProps) 
   };
 
   return (
-    <div className="layout">
+    <div className="flex flex-col h-screen bg-white">
       {/* Fixed Header */}
-      <header className="layout-header">
-        <div className="header-content">
+      <header className="fixed top-0 w-full z-10 bg-white border-b border-gray-200 h-16">
+        <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
           {/* Logo and Brand */}
-          <div className="header-brand">
-            <a href="/" className="brand-link">
-              <div className="brand-icon">
+          <div className="flex items-center gap-3">
+            <a href="/" className="flex items-center gap-3 text-gray-900 font-semibold text-xl">
+              <div className="w-8 h-8 text-blue-600">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M14 2V8H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -53,17 +52,23 @@ export default function Layout({ children, currentPage = 'home' }: LayoutProps) 
                   <path d="M16 18H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
               </div>
-              <span className="brand-text">DocNet</span>
+              <span className="font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                DocNet
+              </span>
             </a>
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="header-nav">
+          <nav className="hidden md:flex items-center gap-4">
             <a 
               href="/" 
-              className={`nav-link ${currentPage === 'home' ? 'active' : ''}`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                currentPage === 'home' 
+                  ? 'text-blue-600 bg-blue-50' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <svg className="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <polyline points="9,22 9,12 15,12 15,22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
@@ -72,9 +77,13 @@ export default function Layout({ children, currentPage = 'home' }: LayoutProps) 
             
             <a 
               href="/upload" 
-              className={`nav-link ${currentPage === 'upload' ? 'active' : ''}`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                currentPage === 'upload' 
+                  ? 'text-blue-600 bg-blue-50' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <svg className="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M14 2H6C4.9 2 4 2.9 4 4V20C4 21.1 4.9 22 6 22H18C19.1 22 20 21.1 20 20V8L14 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M14 2V8H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M16 13H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -86,9 +95,13 @@ export default function Layout({ children, currentPage = 'home' }: LayoutProps) 
             
             <a 
               href="/settings" 
-              className={`nav-link ${currentPage === 'settings' ? 'active' : ''}`}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                currentPage === 'settings' 
+                  ? 'text-blue-600 bg-blue-50' 
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <svg className="nav-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2"/>
                 <path d="M19.4 15A1.65 1.65 0 0 0 18 14.63C18 13.83 17.17 13 16.37 13C15.57 13 14.74 13.83 14.74 14.63C14.74 15.43 15.57 16.26 16.37 16.26C17.17 16.26 18 15.43 18 14.63" stroke="currentColor" strokeWidth="2"/>
                 <path d="M2.21 10.6C2.21 9.8 3.04 8.97 3.84 8.97C4.64 8.97 5.47 9.8 5.47 10.6C5.47 11.4 4.64 12.23 3.84 12.23C3.04 12.23 2.21 11.4 2.21 10.6" stroke="currentColor" strokeWidth="2"/>
@@ -105,76 +118,106 @@ export default function Layout({ children, currentPage = 'home' }: LayoutProps) 
           </nav>
 
           {/* User Section */}
-          <div className="header-user">
+          <div className="flex items-center gap-4">
             {user ? (
-              <div className="user-menu">
-                <div className="user-info">
-                  <span className="user-email">{user.email}</span>
-                  {user.isGuest && <span className="guest-badge">Guest</span>}
+              <div className="flex items-center gap-3">
+                <div className="hidden sm:flex items-center gap-2">
+                  <span className="text-sm text-gray-700 truncate max-w-[200px]">{user.email}</span>
+                  {user.isGuest && (
+                    <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                      Guest
+                    </span>
+                  )}
                 </div>
-                <button className="logout-btn" onClick={handleLogout}>
-                  <svg className="logout-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <button 
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     <path d="M16 17L21 12L16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                     <path d="M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
-                  <span>Sign Out</span>
+                  <span className="hidden sm:inline">Sign Out</span>
                 </button>
               </div>
             ) : (
-              <a href="/signin" className="signin-btn">
-                <svg className="signin-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <a 
+                href="/signin" 
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M15 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M10 17L15 12L10 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M15 12H3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-                <span>Sign In</span>
+                <span className="hidden sm:inline">Sign In</span>
               </a>
             )}
-          </div>
 
-          {/* Mobile Menu Button */}
-          <button className="mobile-menu-btn" onClick={toggleSidebar}>
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 12H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M3 6H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+            {/* Mobile Menu Button */}
+            <button 
+              className="md:hidden flex items-center justify-center w-10 h-10 text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors"
+              onClick={toggleSidebar}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 12H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M3 6H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M3 18H21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Content Area */}
-      <div className="layout-main">
+      <div className="flex flex-1 pt-16">
         {/* Sidebar */}
-        <aside className={`layout-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-          <div className="sidebar-content">
-            <div className="sidebar-header">
-              <h3>Chat History</h3>
-              <button className="new-chat-btn">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="5" x2="12" y2="19"/>
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                New Chat
-              </button>
+        <aside className={`${
+          isMobile 
+            ? 'fixed top-16 left-0 bottom-0 z-20 w-80 transform transition-transform duration-200 ease-in-out' 
+            : 'hidden md:flex md:w-72 shrink-0'
+        } ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } bg-gray-50 border-r border-gray-200 flex flex-col`}>
+          <div className="flex flex-col h-full">
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-900">Chat History</h3>
+                <button className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors">
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  New
+                </button>
+              </div>
             </div>
             
-            <div className="sidebar-chats">
+            <div className="flex-1 overflow-y-auto p-4">
               {/* Chat sessions will be rendered here */}
+              <div className="space-y-2">
+                <div className="p-3 bg-white border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                  <div className="text-sm font-medium text-gray-900">New Chat</div>
+                  <div className="text-xs text-gray-500">Start a new conversation</div>
+                </div>
+              </div>
             </div>
           </div>
         </aside>
 
         {/* Main Content */}
-        <main className="layout-content">
+        <main className="flex flex-col flex-1 min-w-0 bg-white">
           {children}
         </main>
       </div>
 
-      {/* Mobile Sidebar Overlay - Only show on mobile when sidebar is open */}
+      {/* Mobile Sidebar Overlay */}
       {isMobile && sidebarOpen && (
-        <div className="sidebar-overlay" onClick={toggleSidebar} />
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-10" 
+          onClick={toggleSidebar}
+        />
       )}
     </div>
   );

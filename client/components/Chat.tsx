@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import './Chat.css';
 
 interface Message {
   id: string;
@@ -127,7 +126,7 @@ export default function Chat() {
 
   // Handle message editing
   const editMessage = useCallback((messageId: string, newContent: string) => {
-    setMessages(prev => prev.map(msg => 
+    setMessages(prev => prev.map(msg =>
       msg.id === messageId ? { ...msg, content: newContent } : msg
     ));
     setEditingMessageId(null);
@@ -150,10 +149,14 @@ export default function Chat() {
     const isEditing = editingMessageId === message.id;
 
     return (
-      <div key={message.id} className={`message ${message.role}`}>
-        <div className="message-content">
+      <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+        <div className={`max-w-3xl px-4 py-3 rounded-2xl ${
+          message.role === 'user' 
+            ? 'bg-blue-600 text-white' 
+            : 'bg-gray-100 text-gray-900'
+        }`}>
           {isEditing ? (
-            <div className="edit-message">
+            <div className="space-y-3">
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
@@ -166,71 +169,80 @@ export default function Chat() {
                     setEditValue('');
                   }
                 }}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
-              <div className="edit-actions">
-                <button onClick={() => editMessage(message.id, editValue)}>Save</button>
-                <button onClick={() => {
-                  setEditingMessageId(null);
-                  setEditValue('');
-                }}>Cancel</button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => editMessage(message.id, editValue)}
+                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Save
+                </button>
+                <button 
+                  onClick={() => {
+                    setEditingMessageId(null);
+                    setEditValue('');
+                  }}
+                  className="px-3 py-1 text-sm bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           ) : (
             <>
-              <div className="message-text" dangerouslySetInnerHTML={{ __html: message.content.replace(/\n/g, '<br>') }} />
+              <div className="whitespace-pre-wrap">{message.content}</div>
               
               {message.evidenceType && (
-                <div className="evidence-badge">
+                <div className="mt-2 text-xs opacity-75">
                   {message.evidenceType === 'documents' && '📄 Using your documents'}
                   {message.evidenceType === 'web' && '🌐 Web search'}
                   {message.evidenceType === 'mixed' && '📄🌐 Documents + Web'}
                 </div>
               )}
-              
+
               {message.sources && message.sources.length > 0 && showSources && (
-                <div className="message-sources">
-                  <strong>Sources:</strong>
-                  <ul>
+                <div className="mt-3 p-3 bg-white bg-opacity-10 rounded-lg">
+                  <div className="text-xs font-medium mb-2">Sources:</div>
+                  <ul className="text-xs space-y-1">
                     {message.sources.map((source, index) => (
                       <li key={index}>{source}</li>
                     ))}
                   </ul>
                 </div>
               )}
-              
+
               {message.responseTime && (
-                <div className="response-time">
+                <div className="mt-2 text-xs opacity-75">
                   Response time: {message.responseTime}ms
                 </div>
               )}
             </>
           )}
         </div>
-        
+
         {message.role === 'user' && !isEditing && (
-          <div className="message-actions">
+          <div className="flex flex-col gap-1">
             <button
-              className="action-btn edit-btn"
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
               onClick={() => {
                 setEditingMessageId(message.id);
                 setEditValue(message.content);
               }}
               title="Edit message"
-              aria-label="Edit message"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                 <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
             </button>
             <button
-              className="action-btn delete-btn"
+              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
               onClick={() => deleteMessage(message.id)}
               title="Delete message"
-              aria-label="Delete message"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 6h18"/>
                 <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
                 <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
@@ -248,80 +260,91 @@ export default function Chat() {
   }, [messages, renderMessage]);
 
   return (
-    <div className="chat">
+    <div className="flex flex-col h-full">
       {/* Chat Controls */}
-      <div className="chat-controls">
-        <div className="control-group">
-          <label>AI Provider:</label>
-          <select 
-            value={selectedAIProvider} 
-            onChange={(e) => setSelectedAIProvider(e.target.value)}
-          >
-            {aiProviders.map(provider => (
-              <option key={provider.id} value={provider.id}>
-                {provider.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="control-group">
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={searchWeb}
-              onChange={(e) => setSearchWeb(e.target.checked)}
-            />
-            Web Search
-          </label>
-          
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={showSources}
-              onChange={(e) => setShowSources(e.target.checked)}
-            />
-            Show Sources
-          </label>
+      <div className="border-b border-gray-200 p-4 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-gray-700">AI Provider:</label>
+              <select
+                value={selectedAIProvider}
+                onChange={(e) => setSelectedAIProvider(e.target.value)}
+                className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {aiProviders.map(provider => (
+                  <option key={provider.id} value={provider.id}>
+                    {provider.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={searchWeb}
+                onChange={(e) => setSearchWeb(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              Web Search
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={showSources}
+                onChange={(e) => setShowSources(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              Show Sources
+            </label>
+          </div>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="chat-messages">
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
         {memoizedMessages}
-        
+
         {isLoading && (
-          <div className="loading-message">
-            <div className="loading-indicator">
-              <div className="spinner"></div>
-              <span>Processing...</span>
+          <div className="flex justify-start">
+            <div className="max-w-3xl px-4 py-3 bg-gray-100 text-gray-900 rounded-2xl">
+              <div className="flex items-center gap-3">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                <span className="text-sm">Processing...</span>
+              </div>
             </div>
           </div>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Form */}
-      <div className="chat-input">
-        <div className="input-container">
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyPress}
-            placeholder="Ask me anything about your documents or research topics..."
-            disabled={isLoading}
-            rows={1}
-          />
+      {/* Input Area */}
+      <div className="border-t border-gray-200 p-4 bg-white">
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <textarea
+              ref={textareaRef}
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyPress}
+              placeholder="Ask me anything about your documents or research topics..."
+              disabled={isLoading}
+              className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+              rows={1}
+            />
+          </div>
           
-          <button 
+          <button
             onClick={handleSubmit}
             disabled={!inputValue.trim() || isLoading}
-            className="send-btn"
-            aria-label="Send message"
+            className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="22" y1="2" x2="11" y2="13"/>
               <polygon points="22,2 15,22 11,13 2,9 22,2"/>
             </svg>
