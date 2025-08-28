@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { FileService, AuthService, FileMetadata } from '../services/supabase';
-import Navigation from '../components/Navigation';
 import './FileUpload.css';
 
 interface UploadedFile extends FileMetadata {
@@ -220,8 +219,6 @@ export default function FileUpload() {
 
   return (
     <div className="file-upload-page">
-      <Navigation currentPage="upload" />
-      
       <div className="file-upload-container">
         {/* Header Section */}
         <div className="page-header">

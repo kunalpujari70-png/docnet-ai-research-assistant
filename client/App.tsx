@@ -5,6 +5,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Layout from "./components/Layout";
 import Index from "./pages/Index";
 import FileUpload from "./pages/FileUpload";
 import Settings from "./pages/Settings";
@@ -94,23 +95,31 @@ const App = () => {
               <Routes>
                 <Route path="/" element={
                   <ProtectedRoute>
-                    <Index />
+                    <Layout currentPage="home">
+                      <Index />
+                    </Layout>
                   </ProtectedRoute>
                 } />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/upload" element={
                   <ProtectedRoute>
-                    <FileUpload />
+                    <Layout currentPage="upload">
+                      <FileUpload />
+                    </Layout>
                   </ProtectedRoute>
                 } />
                 <Route path="/settings" element={
                   <ProtectedRoute>
-                    <Settings />
+                    <Layout currentPage="settings">
+                      <Settings />
+                    </Layout>
                   </ProtectedRoute>
                 } />
                 <Route path="/simple" element={
                   <ProtectedRoute>
-                    <SimpleTest />
+                    <Layout currentPage="simple">
+                      <SimpleTest />
+                    </Layout>
                   </ProtectedRoute>
                 } />
                 <Route path="*" element={<NotFound />} />

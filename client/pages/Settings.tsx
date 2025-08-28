@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
-import Navigation from '../components/Navigation';
 import './Settings.css';
 
 interface SettingsFeedback {
@@ -428,7 +427,6 @@ export default function Settings() {
   if (!isInitialized) {
     return (
       <div className="settings-page">
-        <Navigation currentPage="settings" />
         <div className="settings-container">
           <div className="loading-overlay">
             <div className="loading-spinner"></div>
@@ -445,7 +443,6 @@ export default function Settings() {
           <div className="loading-spinner"></div>
         </div>
       )}
-      <Navigation currentPage="settings" />
       
       <div className="settings-container">
         <div className="settings-header">
