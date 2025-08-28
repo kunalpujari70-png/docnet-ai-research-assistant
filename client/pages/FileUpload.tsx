@@ -239,7 +239,7 @@ export default function FileUpload() {
               </svg>
             </div>
             <div className="header-text">
-              <h1 className="page-title">DocNet Upload</h1>
+              <h1 className="page-title">Document Upload</h1>
               <p className="page-subtitle">Upload documents to unlock the full power of DocNet research</p>
             </div>
           </div>

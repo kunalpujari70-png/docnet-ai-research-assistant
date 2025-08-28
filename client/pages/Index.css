@@ -1014,84 +1014,14 @@
   }
 }
 
-/* Chrome-specific performance optimizations */
+/* Chrome-specific performance optimizations - SIMPLIFIED to fix rendering issues */
 @media screen and (-webkit-min-device-pixel-ratio: 0) {
-  .chat-container {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
   .chat-messages {
     -webkit-overflow-scrolling: touch;
-    -webkit-transform: translateZ(0);
-    will-change: scroll-position;
   }
   
-  .message {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .loading-indicator {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .progress-bar {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .chat-input-form {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .input-container {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .send-btn {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .chat-sidebar {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .chat-session {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .document-stats {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .stats-grid {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
-  }
-  
-  .stat-item {
-    -webkit-backface-visibility: hidden;
-    -webkit-transform: translateZ(0);
-    will-change: transform;
+  .chat-sessions {
+    -webkit-overflow-scrolling: touch;
   }
 }
 
@@ -1283,18 +1213,7 @@
   }
 }
 
-/* Chrome-specific memory optimizations */
-@media screen and (-webkit-min-device-pixel-ratio: 0) {
-  .chat-container * {
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-  }
-  
-  .chat-container *:hover {
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
-  }
-}
+/* Chrome-specific memory optimizations - REMOVED to fix rendering issues */
 
 /* Chrome-specific GPU acceleration for animations */
 @media screen and (-webkit-min-device-pixel-ratio: 0) {
@@ -1340,28 +1259,8 @@
   }
 }
 
-/* Chrome-specific memory leak prevention */
-@media screen and (-webkit-min-device-pixel-ratio: 0) {
-  .chat-container {
-    contain: layout style paint;
-  }
-  
-  .chat-messages {
-    contain: layout style paint;
-  }
-  
-  .chat-sidebar {
-    contain: layout style paint;
-  }
-  
-  .message {
-    contain: layout style paint;
-  }
-  
-  .chat-session {
-    contain: layout style paint;
-  }
-}
+/* Chrome-specific memory leak prevention - REMOVED to fix washed-out look */
+/* The contain property was causing rendering issues */
 
 
 
