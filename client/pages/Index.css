@@ -515,11 +515,11 @@
 }
 
 .message-content {
-  max-width: 80%;
+  max-width: 720px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 1rem;
-  padding: 1rem;
+  padding: 1.25rem;
   position: relative;
 }
 
@@ -580,6 +580,13 @@
   font-size: 0.75rem;
 }
 
+.response-time {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
 .message-actions {
   display: flex;
   gap: 0.5rem;
@@ -597,8 +604,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
+  min-width: 36px;
+  height: 36px;
 }
 
 .action-btn:hover {
@@ -620,8 +627,8 @@
 }
 
 .action-btn svg {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
 }
 
 .sources-toggle {
