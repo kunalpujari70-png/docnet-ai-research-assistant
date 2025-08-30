@@ -7,7 +7,7 @@ import { handleDemo } from "./routes/demo";
 import openaiRouter from "./routes/openai";
 import geminiRouter from "./routes/gemini";
 import { handlePdfProcess } from "./routes/pdf-process";
-import { handleFileUpload, getUploadedFiles, handleProcessDocuments } from "./routes/file-upload";
+import { handleFileUpload, getUploadedFiles, handleProcessDocuments, getProcessedDocuments } from "./routes/file-upload";
 import { handleWebSearch, handleEnhancedSearch } from "./routes/web-search";
 import { 
   processDocument, 
@@ -47,6 +47,7 @@ export function createServer() {
   app.post("/api/pdf/process", handlePdfProcess);
   app.post("/api/upload", handleFileUpload);
   app.get("/api/files", getUploadedFiles);
+  app.get("/api/documents", getProcessedDocuments);
   app.post("/api/process-documents", handleProcessDocuments);
 
   // Web search routes

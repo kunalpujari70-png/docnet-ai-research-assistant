@@ -104,11 +104,43 @@ router.post('/chat', async (req, res) => {
     console.log(`OpenAI request: "${prompt}"`);
     console.log(`Search web: ${searchWeb}`);
 
-    // Get document context
+    // Get document context with improved search
     let databaseContext = '';
-    const relevantDocuments = await searchDocuments(prompt);
+    let relevantDocuments = await searchDocuments(prompt);
     console.log(`Search query: "${prompt}"`);
     console.log(`Found ${relevantDocuments.length} relevant documents`);
+
+    // If no documents found with exact search, try a broader search
+    if (relevantDocuments.length === 0) {
+      console.log("No exact matches found, trying broader search...");
+      const allDocuments = await getAllDocuments();
+      const processedDocs = allDocuments.filter(doc => doc.processed);
+      
+      if (processedDocs.length > 0) {
+        // Get full content for all processed documents
+        const fullDocs = await Promise.all(processedDocs.map(async (doc) => {
+          const fullDoc = await getDocumentById(doc.id);
+          return fullDoc;
+        }));
+        
+        // Filter documents that contain any part of the query
+        const queryWords = prompt.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+        relevantDocuments = fullDocs.filter(doc => 
+          doc && queryWords.some(word => 
+            doc.content.toLowerCase().includes(word) ||
+            doc.originalName.toLowerCase().includes(word)
+          )
+        ).map(doc => ({
+          id: doc!.id,
+          originalName: doc!.originalName,
+          content: doc!.content,
+          summary: doc!.summary,
+          uploadDate: doc!.uploadDate
+        }));
+        
+        console.log(`Broad search found ${relevantDocuments.length} potentially relevant documents`);
+      }
+    }
 
     if (relevantDocuments.length > 0) {
       console.log(`Document names: ${relevantDocuments.map(doc => doc.originalName).join(', ')}`);
@@ -143,11 +175,11 @@ router.post('/chat', async (req, res) => {
       databaseContext = `\n\nPRIMARY SOURCE - RELEVANT DOCUMENT SECTIONS:\n${relevantSections.join('\n')}`;
     } else {
       console.log("No relevant documents found for query:", prompt);
-      // Fallback: include first 2000 characters of each document
+      // Final fallback: include first 2000 characters of each document
       const allDocuments = await getAllDocuments();
       const processedDocs = allDocuments.filter(doc => doc.processed);
       if (processedDocs.length > 0) {
-        console.log("Including document summaries as fallback");
+        console.log("Including document summaries as final fallback");
         const docSummaries = await Promise.all(processedDocs.map(async (doc) => {
           const fullDoc = await getDocumentById(doc.id);
           if (fullDoc) {
@@ -186,6 +218,8 @@ router.post('/chat', async (req, res) => {
 
     // Build the system message
     let systemMessage = `You are **Claude**, the intelligent research companion powering DocNet - where documents meet the internet for extraordinary research and content creation. You excel at combining uploaded documents with web knowledge to help users discover, analyze, and create amazing content.
+
+🚨 **CRITICAL INSTRUCTION**: If you see document content provided in the context below, you MUST use it and acknowledge it. NEVER say you couldn't find information in the documents when they are provided to you.
 
 ## **Your Core Capabilities:**
 
@@ -271,6 +305,16 @@ ${relevantDocuments.length > 0 ? `You have access to ${relevantDocuments.length}
 - **Be transparent** about your sources in every response
 - **Offer to help** users upload relevant documents when appropriate
 
+### 🚨 **CRITICAL SOURCE ATTRIBUTION RULES:**
+- **NEVER say "I couldn't find specific information in your uploaded documents" if documents are provided**
+- **NEVER say "I couldn't find information in your uploaded documents" under any circumstances when documents are provided**
+- **If documents are provided in the context, they contain relevant information**
+- **Always acknowledge the document sources when they are available**
+- **Use phrases like "Based on your uploaded documents" or "According to your documents"**
+- **Only mention web search when documents don't contain the specific information needed**
+- **If you see document content in the context, you MUST acknowledge it and use it**
+- **The phrase "I couldn't find" should NEVER appear in your response when documents are provided**
+
 ## **DocNet Motivation Strategy:**
 - **Subtly inspire** users to explore the power of combining documents with internet research
 - **Highlight possibilities** - show how their research can become compelling content
@@ -291,7 +335,9 @@ ${relevantDocuments.length > 0 ? `You have access to ${relevantDocuments.length}
 Remember: You're not just providing information—you're inspiring users to discover the extraordinary possibilities when documents meet the internet. Help them see how DocNet can transform their research into something amazing.`;
 
     // Build the user message
-    let userMessage = `User Question: ${prompt}`;
+    let userMessage = `User Question: ${prompt}
+
+IMPORTANT: If document content is provided below, you MUST use it and acknowledge it. Do not say you couldn't find information in the documents.`;
     
     if (context) {
       userMessage += `\n\nManual Document Context: ${context}`;

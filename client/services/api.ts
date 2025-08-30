@@ -30,6 +30,14 @@ export interface FileUploadResponse {
   error?: string;
   content?: string;
   summary?: string;
+  files?: string[];
+  processedFiles?: Array<{
+    name: string;
+    content: string;
+    summary: string;
+    success: boolean;
+    error?: string;
+  }>;
 }
 
 export interface DocumentMetadata {
@@ -85,7 +93,7 @@ class ProductionAPIService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      const response = await fetch(`${this.baseURL}/chat`, {
+      const response = await fetch(`${this.baseURL}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,6 +138,35 @@ class ProductionAPIService {
     } catch (error) {
       console.error('File upload failed:', error);
       throw error;
+    }
+  }
+
+  // Get processed documents from backend
+  async getProcessedDocuments(): Promise<Array<{
+    id: number;
+    name: string;
+    content: string;
+    summary: string;
+    fileType: string;
+    uploadDate: string;
+  }>> {
+    try {
+      const response = await fetch(`${this.baseURL}/documents`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch documents: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result.documents || [];
+    } catch (error) {
+      console.error('Failed to fetch processed documents:', error);
+      return [];
     }
   }
 

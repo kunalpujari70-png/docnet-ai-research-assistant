@@ -3,7 +3,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { spawnSync } from "child_process";
-import { addDocument, getAllDocumentsForProcessing, updateDocumentContent, getAllDocuments } from "../database";
+import { addDocument, getAllDocumentsForProcessing, updateDocumentContent, getAllDocuments, getDocumentContent } from "../database";
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -40,6 +40,13 @@ interface FileUploadResponse {
   success: boolean;
   message: string;
   files?: string[];
+  processedFiles?: Array<{
+    name: string;
+    content: string;
+    summary: string;
+    success: boolean;
+    error?: string;
+  }>;
   error?: string;
 }
 
@@ -62,29 +69,96 @@ export const handleFileUpload: RequestHandler = async (req, res) => {
 
       const files = req.files as Express.Multer.File[];
       const uploadedFiles: string[] = [];
+      const processedFiles: Array<{
+        name: string;
+        content: string;
+        summary: string;
+        success: boolean;
+        error?: string;
+      }> = [];
 
-      // Process each file and add to database
+      // Process each file and add to database with content extraction
       for (const file of files) {
         try {
+          let content = "";
+          let summary = "";
+          let extractionSuccess = true;
+          let extractionError = "";
+
+          // Extract content based on file type
+          if (path.extname(file.originalname).toLowerCase() === '.txt') {
+            try {
+              content = fs.readFileSync(file.path, 'utf-8');
+              summary = content.substring(0, 200) + "...";
+            } catch (error) {
+              extractionSuccess = false;
+              extractionError = `Failed to read text file: ${error.message}`;
+            }
+          } else if (path.extname(file.originalname).toLowerCase() === '.pdf') {
+            try {
+              // Use a separate CJS helper with pdf-parse to avoid bundler import issues
+              const extractorPath = path.join(process.cwd(), 'server', 'utils', 'extract-pdf.cjs');
+              const result = spawnSync(process.execPath, [extractorPath, file.path], { encoding: 'utf-8' });
+              if (result.status === 0) {
+                const parsed = JSON.parse(result.stdout || '{}');
+                content = parsed.text || '';
+                const firstLines = content.split('\n').slice(0, 10).join(' ').trim();
+                summary = firstLines.substring(0, 300) + "...";
+                console.log(`Extracted ${content.length} characters from PDF: ${file.originalname}`);
+              } else {
+                extractionSuccess = false;
+                extractionError = `PDF extractor failed (status ${result.status}): ${result.stderr}`;
+              }
+            } catch (pdfError) {
+              extractionSuccess = false;
+              extractionError = `Error extracting PDF content: ${pdfError.message}`;
+            }
+          } else if (['.docx', '.doc'].includes(path.extname(file.originalname).toLowerCase())) {
+            // For now, create placeholder content for Word documents
+            content = `Document content from ${file.originalname} - Word document processing not yet implemented`;
+            summary = `Document: ${file.originalname} - Word document`;
+          } else {
+            content = `Document content from ${file.originalname}`;
+            summary = `Document: ${file.originalname}`;
+          }
+
+          // Add document to database with extracted content
           const documentId = await addDocument({
             filename: file.filename,
             originalName: file.originalname,
             filePath: file.path,
             fileType: path.extname(file.originalname).toLowerCase(),
-            fileSize: file.size
+            fileSize: file.size,
+            content: content,
+            summary: summary
           });
           
           uploadedFiles.push(file.originalname);
-          console.log(`Document added to database with ID: ${documentId}`);
+          processedFiles.push({
+            name: file.originalname,
+            content: content,
+            summary: summary,
+            success: extractionSuccess
+          });
+          
+          console.log(`Document added to database with ID: ${documentId}, content length: ${content.length}`);
         } catch (dbError) {
           console.error(`Error adding file ${file.originalname} to database:`, dbError);
+          processedFiles.push({
+            name: file.originalname,
+            content: "",
+            summary: "",
+            success: false,
+            error: `Database error: ${dbError.message}`
+          });
         }
       }
       
       res.json({
         success: true,
-        message: `${uploadedFiles.length} file(s) uploaded and stored in database successfully`,
-        files: uploadedFiles
+        message: `${uploadedFiles.length} file(s) uploaded and processed successfully`,
+        files: uploadedFiles,
+        processedFiles: processedFiles
       } as FileUploadResponse);
     });
   } catch (error) {
@@ -181,5 +255,40 @@ export const handleProcessDocuments: RequestHandler = async (req, res) => {
   } catch (error) {
     console.error("Error processing documents:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// Get processed documents with content for AI queries
+export const getProcessedDocuments: RequestHandler = async (req, res) => {
+  try {
+    const documents = await getAllDocuments();
+    const processedDocs = [];
+    
+    for (const doc of documents) {
+      if (doc.processed) {
+        const content = await getDocumentContent(doc.id);
+        if (content) {
+          processedDocs.push({
+            id: doc.id,
+            name: doc.originalName,
+            content: content.content,
+            summary: content.summary,
+            fileType: doc.fileType,
+            uploadDate: doc.uploadDate
+          });
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      documents: processedDocs
+    });
+  } catch (error) {
+    console.error("Error getting processed documents:", error);
+    res.status(500).json({ 
+      success: false,
+      error: "Internal server error" 
+    });
   }
 };

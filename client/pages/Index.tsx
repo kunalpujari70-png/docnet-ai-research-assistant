@@ -222,6 +222,32 @@ export default function Index() {
     }
   }, [chatSessions]);
 
+  // Load documents from backend on component mount
+  useEffect(() => {
+    const loadDocumentsFromBackend = async () => {
+      try {
+        const documents = await apiService.getProcessedDocuments();
+        const backendFiles: UploadedFile[] = documents.map(doc => ({
+          id: doc.id.toString(),
+          name: doc.name,
+          size: 0, // Size not available from backend
+          type: doc.fileType,
+          content: doc.content,
+          summary: doc.summary,
+          processed: true,
+          uploadedAt: new Date(doc.uploadDate)
+        }));
+        
+        setUserFiles(backendFiles);
+        console.log(`Loaded ${backendFiles.length} documents from backend`);
+      } catch (error) {
+        console.error('Failed to load documents from backend:', error);
+      }
+    };
+
+    loadDocumentsFromBackend();
+  }, []);
+
   const formatTime = useCallback((timestamp: Date) => {
     if (!timestamp || !(timestamp instanceof Date) || isNaN(timestamp.getTime())) {
       return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -302,70 +328,59 @@ export default function Index() {
           clearTimeout(timeoutId);
 
           if (result.success) {
-            // For large PDFs, use enhanced processing with Chrome optimizations
-            if (file.type === 'application/pdf' && file.size > 5 * 1024 * 1024) {
-              setStateOptimized(setLoadingStage, `Indexing large PDF: ${file.name}...`);
-              
-              try {
-                const pdfResult = await enhancedDocumentProcessor.processLargePDF(
-                  file,
-                  (progress) => {
-                    setStateOptimized(setProcessingProgress, progress.percentage);
-                    setStateOptimized(setLoadingStage, `Indexing PDF page ${progress.pageNum}/${progress.totalPages}...`);
-                  },
-                  3 // Chrome-optimized chunk size
-                );
-                
-                if (pdfResult.success) {
-                  setStateOptimized(setDocumentStats, pdfResult.stats);
-                }
-              } catch (error) {
-                console.warn('Enhanced PDF processing failed:', error);
-                // Reset workers if they failed
-                enhancedDocumentProcessor.resetWorkers();
+            // Check if we have processed content from the backend
+            if (result.processedFiles && result.processedFiles.length > 0) {
+              const processedFile = result.processedFiles.find(pf => pf.name === file.name);
+              if (processedFile && processedFile.success) {
+                const uploadedFile: UploadedFile = {
+                  id: fileId.toString(),
+                  name: file.name,
+                  size: file.size,
+                  type: file.type,
+                  processed: true,
+                  uploadedAt: new Date(),
+                  content: processedFile.content,
+                  summary: processedFile.summary
+                };
+                newFiles.push(uploadedFile);
+                console.log(`Successfully processed ${file.name} with ${processedFile.content.length} characters`);
+              } else {
+                console.error(`Failed to process ${file.name}:`, processedFile?.error);
+                alert(`Failed to process ${file.name}: ${processedFile?.error || 'Unknown error'}`);
               }
+            } else {
+              // Fallback to old behavior if no processed content
+              const uploadedFile: UploadedFile = {
+                id: fileId.toString(),
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                processed: true,
+                uploadedAt: new Date(),
+                content: `Content from ${file.name}`,
+                summary: `Summary of ${file.name}`
+              };
+              newFiles.push(uploadedFile);
             }
-            
-            const uploadedFile: UploadedFile = {
-              id: fileId.toString(),
-              name: file.name,
-              size: file.size,
-              type: file.type,
-              processed: true,
-              uploadedAt: new Date(),
-              content: result.content || `Content from ${file.name}`,
-              summary: result.summary || `Summary of ${file.name}`
-            };
-
-            newFiles.push(uploadedFile);
           } else {
             console.error(`Failed to upload ${file.name}:`, result.error);
+            alert(`Failed to upload ${file.name}: ${result.error}`);
           }
         } catch (error) {
           clearTimeout(timeoutId);
-          if (error instanceof Error && error.name === 'AbortError') {
-            alert(`Upload timeout for ${file.name}. File may be too large.`);
-          } else {
-            throw error;
-          }
-        }
-
-        // Yield control between files for Chrome
-        if (i < files.length - 1) {
-          await chromeUtils.yield();
+          console.error(`Error uploading ${file.name}:`, error);
+          alert(`Error uploading ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
 
-      setUserFiles(prev => [...prev, ...newFiles]);
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('Upload failed. Please try again.');
+      if (newFiles.length > 0) {
+        setUserFiles(prev => [...prev, ...newFiles]);
+        console.log(`Successfully uploaded ${newFiles.length} files`);
+      }
     } finally {
-      processingRef.current = false;
       setIsUploading(false);
+      processingRef.current = false;
       setLoadingStage('');
-      setProcessingProgress(0);
-      // Clear the input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }

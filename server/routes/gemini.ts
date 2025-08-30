@@ -30,13 +30,45 @@ export const handleGeminiChat: RequestHandler = async (req, res) => {
       return res.status(500).json({ error: "Gemini API key not configured" });
     }
 
-    // Search database for relevant documents
+    // Search database for relevant documents with improved search
     let databaseContext = "";
     let relevantDocuments: any[] = []; // Initialize to avoid undefined error
     try {
       relevantDocuments = await searchDocuments(prompt);
       console.log(`Search query: "${prompt}"`);
       console.log(`Found ${relevantDocuments.length} relevant documents`);
+      
+      // If no documents found with exact search, try a broader search
+      if (relevantDocuments.length === 0) {
+        console.log("No exact matches found, trying broader search...");
+        const allDocuments = await getAllDocuments();
+        const processedDocs = allDocuments.filter(doc => doc.processed);
+        
+        if (processedDocs.length > 0) {
+          // Get full content for all processed documents
+          const fullDocs = await Promise.all(processedDocs.map(async (doc) => {
+            const fullDoc = await getDocumentById(doc.id);
+            return fullDoc;
+          }));
+          
+          // Filter documents that contain any part of the query
+          const queryWords = prompt.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+          relevantDocuments = fullDocs.filter(doc => 
+            doc && queryWords.some(word => 
+              doc.content.toLowerCase().includes(word) ||
+              doc.originalName.toLowerCase().includes(word)
+            )
+          ).map(doc => ({
+            id: doc!.id,
+            originalName: doc!.originalName,
+            content: doc!.content,
+            summary: doc!.summary,
+            uploadDate: doc!.uploadDate
+          }));
+          
+          console.log(`Broad search found ${relevantDocuments.length} potentially relevant documents`);
+        }
+      }
       
       if (relevantDocuments.length > 0) {
         console.log(`Document names: ${relevantDocuments.map(doc => doc.originalName).join(', ')}`);
@@ -45,11 +77,11 @@ export const handleGeminiChat: RequestHandler = async (req, res) => {
         ).join('\n')}`;
       } else {
         console.log("No relevant documents found for query:", prompt);
-        // Fallback: include all processed documents if search doesn't find specific matches
+        // Final fallback: include all processed documents if search doesn't find specific matches
         const allDocuments = await getAllDocuments();
         const processedDocs = allDocuments.filter(doc => doc.processed);
         if (processedDocs.length > 0) {
-          console.log("Including all processed documents as fallback");
+          console.log("Including all processed documents as final fallback");
           relevantDocuments = processedDocs; // Assign to relevantDocuments
           const fullDocs = await Promise.all(processedDocs.map(async (doc) => {
             const fullDoc = await getDocumentById(doc.id);
@@ -114,6 +146,8 @@ export const handleGeminiChat: RequestHandler = async (req, res) => {
     // Smart unified prompt that combines everything - DOCUMENT FIRST APPROACH
     const enhancedPrompt = `You are a comprehensive AI research assistant. Please provide a detailed, well-structured answer that PRIORITIZES the uploaded document content over web search results.
 
+🚨 **CRITICAL INSTRUCTION**: If you see document content provided in the context below, you MUST use it and acknowledge it. NEVER say you couldn't find information in the documents when they are provided to you.
+
 User Question: ${prompt}
 
 CRITICAL DOCUMENT-FIRST INSTRUCTIONS:
@@ -124,13 +158,25 @@ CRITICAL DOCUMENT-FIRST INSTRUCTIONS:
 5. Clearly indicate which information comes from documents vs. web sources
 6. Extract specific quotes, data points, and insights from documents
 7. Cross-reference information across multiple documents when available
-4. If the documents don't contain relevant information, then use web search results
-5. Provide a comprehensive, well-organized response with clear sections
-6. Cite sources when possible (documents first, then web search)
+8. If the documents don't contain relevant information, then use web search results
+9. Provide a comprehensive, well-organized response with clear sections
+10. Cite sources when possible (documents first, then web search)
+
+CRITICAL SOURCE ATTRIBUTION RULES:
+- NEVER say "I couldn't find specific information in your uploaded documents" if documents are provided
+- NEVER say "I couldn't find information in your uploaded documents" under any circumstances when documents are provided
+- If documents are provided in the context, they contain relevant information
+- Always acknowledge the document sources when they are available
+- Use phrases like "Based on your uploaded documents" or "According to your documents"
+- Only mention web search when documents don't contain the specific information needed
+- If you see document content in the context, you MUST acknowledge it and use it
+- The phrase "I couldn't find" should NEVER appear in your response when documents are provided
 
 ${context ? `Manual Document Context: ${context}` : ''}
 ${databaseContext}
 ${webContext}
+
+IMPORTANT: If document content is provided above, you MUST use it and acknowledge it. Do not say you couldn't find information in the documents.
 
 Please provide a comprehensive answer that addresses the user's question, prioritizing the uploaded document content.`;
 

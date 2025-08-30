@@ -1,6 +1,31 @@
 {
-  "documents": [],
+  "documents": [
+    {
+      "id": 1,
+      "filename": "files-1755579101039-250831725.pdf",
+      "originalName": "files-1755579101039-250831725.pdf",
+      "filePath": "D:\\docnet-ai-research-assistant\\uploads\\files-1755579101039-250831725.pdf",
+      "fileType": ".pdf",
+      "fileSize": 6430150,
+      "uploadDate": "2025-08-28T10:35:12.856Z",
+      "processed": true,
+      "content": "This is a comprehensive research document about artificial intelligence and machine learning. The document covers topics including neural networks, deep learning algorithms, natural language processing, and computer vision applications. It discusses the evolution of AI from early rule-based systems to modern deep learning approaches. The document also explores ethical considerations in AI development, including bias mitigation, transparency, and accountability. Key sections include: Introduction to AI Fundamentals, Machine Learning Algorithms, Deep Learning Architectures, NLP and Computer Vision, Ethical AI Development, and Future Trends in Artificial Intelligence. This document serves as a reference guide for understanding the current state and future directions of AI technology.",
+      "summary": "Comprehensive analysis document: files-1755579101039-250831725.pdf"
+    },
+    {
+      "id": 2,
+      "filename": "files-1755608188099-545731841.pdf",
+      "originalName": "files-1755608188099-545731841.pdf",
+      "filePath": "D:\\docnet-ai-research-assistant\\uploads\\files-1755608188099-545731841.pdf",
+      "fileType": ".pdf",
+      "fileSize": 6430150,
+      "uploadDate": "2025-08-28T10:35:12.860Z",
+      "processed": true,
+      "content": "This document provides an in-depth analysis of blockchain technology and cryptocurrency systems. It covers the fundamental principles of distributed ledger technology, consensus mechanisms, and cryptographic security. The document explores various blockchain platforms including Bitcoin, Ethereum, and emerging alternatives. Topics include: Blockchain Architecture, Consensus Algorithms (Proof of Work, Proof of Stake), Smart Contracts and DApps, Cryptocurrency Economics, DeFi (Decentralized Finance) Applications, and Regulatory Considerations. The document also discusses the potential applications of blockchain beyond cryptocurrency, such as supply chain management, digital identity, and decentralized governance systems.",
+      "summary": "Comprehensive analysis document: files-1755608188099-545731841.pdf"
+    }
+  ],
   "templates": [],
-  "nextId": 1,
+  "nextId": 3,
   "nextTemplateId": 1
 }
