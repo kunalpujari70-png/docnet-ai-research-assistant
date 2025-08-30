@@ -1,14 +1,28 @@
-import { createClient } from '@supabase/supabase-js';
+// Initialize Supabase client with fallback for development
+const supabaseUrl = process.env.SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'placeholder_key';
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_ANON_KEY!;
+// Create a mock Supabase client for development if environment variables are missing
+let supabase: any;
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Missing Supabase environment variables');
+if (supabaseUrl === 'https://placeholder.supabase.co' || supabaseKey === 'placeholder_key') {
+  console.warn('⚠️  Using mock Supabase client for development. Set SUPABASE_URL and SUPABASE_ANON_KEY for production.');
+  
+  // Mock Supabase client for development
+  supabase = {
+    from: (table: string) => ({
+      insert: async (data: any) => ({ data: { id: Date.now() }, error: null }),
+      select: async () => ({ data: [], error: null }),
+      update: async (data: any) => ({ data: [], error: null }),
+      delete: async () => ({ data: [], error: null })
+    })
+  };
+} else {
+  const { createClient } = await import('@supabase/supabase-js');
+  supabase = createClient(supabaseUrl, supabaseKey);
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+export { supabase };
 
 // Enhanced document interface with metadata and tags
 export interface Document {

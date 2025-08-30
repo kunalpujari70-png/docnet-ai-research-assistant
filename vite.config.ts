@@ -29,20 +29,9 @@ function expressPlugin(): Plugin {
     name: "express-plugin",
     apply: "serve", // Only apply during development (serve mode)
     configureServer(server) {
-      // Only import and use Express server in development
-      import("./server").then(({ createServer }) => {
-        const app = createServer();
-        
-        // Apply Express middleware to Vite dev server
-        server.middlewares.use((req, res, next) => {
-          // Handle API routes with Express
-          if (req.url?.startsWith('/api/')) {
-            return app(req, res, next);
-          }
-          // Let Vite handle everything else
-          next();
-        });
-      }).catch(console.error);
+      // In development, we'll run the Express server separately on port 3001
+      // The frontend will make API calls to http://localhost:3001
+      console.log('Express server should be running on http://localhost:3001');
     },
   };
 }

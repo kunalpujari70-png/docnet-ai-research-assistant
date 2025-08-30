@@ -1,9 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { apiService, ChatRequest, ChatResponse } from '../services/api';
-import { documentProcessor } from '../services/documentProcessor';
-import { enhancedDocumentProcessor } from '../services/enhancedDocumentProcessor';
-import { backendDocumentService } from '../services/backendDocumentService';
 import Navigation from '../components/Navigation';
 import './Index.css';
 
@@ -207,13 +204,7 @@ export default function Index() {
     }
   }, [chatSessions]);
 
-  // Cleanup document processors on unmount
-  useEffect(() => {
-    return () => {
-      documentProcessor.destroy();
-      enhancedDocumentProcessor.destroy();
-    };
-  }, []);
+
 
   // Save chat sessions to localStorage
   useEffect(() => {
@@ -262,29 +253,106 @@ export default function Index() {
     return timestamp.toLocaleDateString();
   }, []);
 
-  // Chrome-optimized debounced input handler
-  const debouncedSetInputValue = useCallback(
-    debounce((value: string) => {
-      setInputValue(value);
-    }, 100),
-    []
-  );
 
-  // Chrome-optimized input change handler
+
+  // Fixed input change handler - directly update state
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
+    setInputValue(value); // Direct state update
+    
+    // Auto-resize textarea
     e.target.style.height = 'auto';
     e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
-    debouncedSetInputValue(value);
-  }, [debouncedSetInputValue]);
+  }, []);
 
-  // Chrome-optimized key press handler
-  const handleKeyPress = useCallback((e: React.KeyboardEvent) => {
+  // Simplified chat submit handler
+  const handleChatSubmit = useCallback(async () => {
+    if (!inputValue.trim() || isLoading || isUploading) {
+      return;
+    }
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: inputValue.trim(),
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue(''); // Clear input immediately
+    setIsLoading(true);
+    setLoadingStage('Processing your question...');
+
+    try {
+      // Prepare document context
+      const documentContext = userFiles
+        .filter(file => file.processed)
+        .map(file => ({
+          name: file.name,
+          content: file.content || '',
+          summary: file.summary || ''
+        }));
+
+      console.log(`Preparing chat request with ${documentContext.length} processed documents`);
+
+      // Prepare chat history for context
+      const chatHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      // Create chat request
+      const chatRequest: ChatRequest = {
+        message: userMessage.content,
+        documents: documentContext,
+        history: chatHistory,
+        aiProvider: selectedAIProvider as 'openai' | 'gemini',
+        searchWeb: searchWeb
+      };
+
+      console.log('Sending chat request:', chatRequest);
+      
+      const response = await apiService.sendChatMessage(chatRequest);
+      
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response.response,
+        timestamp: new Date(),
+        responseTime: response.responseTime,
+        sources: response.sources
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+      console.log('Chat response received successfully');
+
+    } catch (error) {
+      console.error('Chat submit error:', error);
+      
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `I apologize, but I encountered an error while processing your request: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+      setLoadingStage('');
+      setProcessingProgress(0);
+    }
+  }, [inputValue, isLoading, isUploading, userFiles, messages, selectedAIProvider, searchWeb]);
+
+  // Fixed key press handler for Enter key
+  const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleChatSubmit();
+      if (inputValue.trim() && !isLoading && !isUploading) {
+        handleChatSubmit();
+      }
     }
-  }, []);
+  }, [inputValue, isLoading, isUploading, handleChatSubmit]);
 
   // Chrome-optimized file upload with better error handling
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -447,275 +515,6 @@ export default function Index() {
     ));
   }, []);
 
-  // Chrome-optimized chat submit with better performance
-  const handleChatSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isLoading || processingRef.current) {
-      return;
-    }
-
-    processingRef.current = true;
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: inputValue,
-      timestamp: new Date()
-    };
-
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    const startTime = Date.now();
-    setInputValue('');
-    setIsLoading(true);
-    setLoadingStage('Preparing request...');
-    setProcessingTime(0);
-    setProcessingProgress(0);
-
-    // Add a small delay to prevent UI blocking and show loading state
-    await chromeUtils.yield();
-
-    try {
-      // Prepare document context
-      const documentContext = userFiles
-        .filter(file => file.processed)
-        .map(file => ({
-          name: file.name,
-          content: file.content || '',
-          summary: file.summary || ''
-        }));
-
-      console.log(`Preparing chat request with ${documentContext.length} processed documents`);
-      documentContext.forEach((doc, index) => {
-        console.log(`Document ${index + 1}: ${doc.name} - Content length: ${doc.content.length}, Summary length: ${doc.summary.length}`);
-      });
-
-      // Validate that we have actual content
-      const validDocuments = documentContext.filter(doc => 
-        doc.content && doc.content.trim().length > 10 && 
-        doc.summary && doc.summary.trim().length > 0
-      );
-
-      if (validDocuments.length !== documentContext.length) {
-        console.warn(`Filtered out ${documentContext.length - validDocuments.length} documents with insufficient content`);
-      }
-
-      console.log(`Using ${validDocuments.length} valid documents for AI query`);
-
-      // Prepare chat history for context
-      const chatHistory = messages.map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-
-      // Use backend document processing to prevent frontend unresponsiveness
-      let relevantDocuments = validDocuments;
-      
-      if (documentContext.length > 0) {
-        setStateOptimized(setLoadingStage, 'Analyzing documents...');
-        
-        try {
-          // Check if backend service is available
-          const isBackendAvailable = await backendDocumentService.isBackendAvailable();
-          
-          if (isBackendAvailable) {
-            setStateOptimized(setLoadingStage, 'Using backend document processing...');
-            
-            // Use backend processing for all documents
-            relevantDocuments = await backendDocumentService.searchDocumentsWithFallback(
-              inputValue,
-              documentContext,
-              documentContext.map(doc => doc.name) // Use document names as IDs
-            );
-            
-            setStateOptimized(setLoadingStage, 'Backend processing completed');
-          } else {
-            // Fallback to frontend processing if backend is not available
-            setStateOptimized(setLoadingStage, 'Backend unavailable, using frontend processing...');
-            
-            // Check if we have large documents that need enhanced processing
-            const hasLargeDocuments = documentContext.some(doc => 
-              doc.content && doc.content.length > 100000 // 100KB threshold
-            );
-            
-            if (hasLargeDocuments) {
-              setStateOptimized(setLoadingStage, 'Processing large documents with enhanced analysis...');
-              
-              // Use enhanced processor for large documents with Chrome optimizations
-              relevantDocuments = await enhancedDocumentProcessor.processDocumentsEnhanced(
-                documentContext,
-                inputValue,
-                (progress) => {
-                  setStateOptimized(setProcessingProgress, progress);
-                  setStateOptimized(setLoadingStage, `Enhanced document analysis... ${progress}%`);
-                }
-              );
-            } else {
-              // Use standard processor for smaller documents
-              relevantDocuments = await documentProcessor.processDocuments(
-                documentContext,
-                inputValue,
-                (progress) => {
-                  setStateOptimized(setProcessingProgress, progress);
-                  setStateOptimized(setLoadingStage, `Analyzing documents... ${progress}%`);
-                }
-              );
-            }
-          }
-        } catch (error) {
-          console.warn('Document processing failed, using fallback:', error);
-          // Reset workers if they failed
-          enhancedDocumentProcessor.resetWorkers();
-          // Fallback to original documents
-          relevantDocuments = documentContext;
-        }
-      }
-      
-      setStateOptimized(setLoadingStage, 'Searching for information...');
-      
-      // Enhanced request with processed documents - PRIORITIZE DOCUMENTS OVER WEB SEARCH
-      const request: ChatRequest = {
-        message: inputValue,
-        documents: relevantDocuments,
-        history: chatHistory,
-        aiProvider: selectedAIProvider as 'openai' | 'gemini',
-        searchWeb: searchWeb && relevantDocuments.length === 0 // Only search web if explicitly requested AND no documents available
-      };
-      
-      // Add timeout to prevent hanging requests
-      const timeoutPromise = new Promise<ChatResponse>((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
-      });
-
-      const response: ChatResponse = await Promise.race([
-        apiService.sendChatMessage(request),
-        timeoutPromise
-      ]);
-
-      // Enhanced response handling with better context awareness
-      let enhancedResponse = response.response;
-      
-      // Check if the AI already added context prefixes (from our enhanced backend)
-      const hasContextPrefix = response.response.startsWith('📄') || 
-                              response.response.startsWith('🌐') || 
-                              response.response.startsWith('🤔');
-      
-      if (!hasContextPrefix) {
-        // Add context information to the response if not already present
-        if (documentContext.length > 0 && response.documentsUsed && response.documentsUsed.length > 0) {
-          enhancedResponse = `📄 **Based on your uploaded documents and web search:**\n\n${response.response}`;
-        } else if (documentContext.length > 0 && searchWeb) {
-          enhancedResponse = `🌐 **I couldn't find specific information in your uploaded documents, but here's what I found on the internet:**\n\n${response.response}`;
-        } else if (documentContext.length === 0 && searchWeb) {
-          enhancedResponse = `🌐 **Based on web search:**\n\n${response.response}`;
-        } else if (documentContext.length > 0 && !searchWeb) {
-          enhancedResponse = `📄 **Based on your uploaded documents:**\n\n${response.response}`;
-        }
-      }
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: enhancedResponse,
-        timestamp: new Date(),
-        responseTime: response.responseTime,
-        sources: response.sources
-      };
-
-      const finalMessages = [...updatedMessages, assistantMessage];
-      setMessages(finalMessages);
-
-      // Update current session
-      if (currentSessionId) {
-        setChatSessions(prev => prev.map(session => 
-          session.id === currentSessionId 
-            ? { 
-                ...session, 
-                messages: finalMessages,
-                title: finalMessages[0]?.content.substring(0, 50) + '...' || 'New Chat',
-                documentCount: userFiles.length,
-                lastUpdated: new Date()
-              }
-            : session
-        ));
-      }
-
-    } catch (error) {
-      console.error('Chat error:', error);
-      
-      let errorContent = 'I apologize, but I encountered an error processing your request. Please try again, or if the problem persists, try refreshing the page.';
-      
-      // Provide more specific error messages
-      if (error instanceof Error) {
-        if (error.message.includes('timeout')) {
-          errorContent = '⏱️ **Request Timeout:** The request took too long to process. This might be due to large documents or high server load. Please try again with a simpler query or fewer documents.';
-        } else if (error.message.includes('API key') || error.message.includes('authentication')) {
-          errorContent = '⚠️ **Authentication Error:** Please check your API keys in Settings. The AI service requires valid API credentials to function.';
-        } else if (error.message.includes('network') || error.message.includes('fetch')) {
-          errorContent = '🌐 **Network Error:** Unable to connect to the AI service. Please check your internet connection and try again.';
-        } else if (error.message.includes('rate limit')) {
-          errorContent = '⏱️ **Rate Limit Exceeded:** Too many requests. Please wait a moment and try again.';
-        } else if (error.message.includes('document') || error.message.includes('file')) {
-          errorContent = '📄 **Document Processing Error:** There was an issue processing your uploaded documents. Please try re-uploading them.';
-        } else if (error.message.includes('context') || error.message.includes('insufficient')) {
-          errorContent = '🤔 **Insufficient Context:** I don\'t have enough information from your uploaded documents to answer this question fully. Could you provide more details or upload additional relevant documents?';
-        } else if (error.message.includes('performance') || error.message.includes('blocking')) {
-          errorContent = '⚡ **Performance Issue:** The request is taking longer than expected. This might be due to large documents. Please try with fewer documents or a simpler query.';
-        }
-      }
-    
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: errorContent,
-        timestamp: new Date(),
-        responseTime: 0,
-      };
-
-      const finalMessages = [...updatedMessages, assistantMessage];
-      setMessages(finalMessages);
-
-      // Update current session with fallback
-      if (currentSessionId) {
-        setChatSessions(prev => prev.map(session => 
-          session.id === currentSessionId 
-            ? { 
-                ...session, 
-                messages: finalMessages,
-                title: finalMessages[0]?.content.substring(0, 50) + '...' || 'New Chat',
-                documentCount: userFiles.length,
-                lastUpdated: new Date()
-              }
-            : session
-        ));
-      }
-      
-      // Save chat session after error
-      try {
-        const updatedSessions = chatSessions.map(session => 
-          session.id === currentSessionId 
-            ? { 
-                ...session, 
-                messages: finalMessages,
-                title: finalMessages[0]?.content.substring(0, 50) + '...' || 'New Chat',
-                documentCount: userFiles.length,
-                lastUpdated: new Date()
-              }
-            : session
-        );
-        localStorage.setItem('chatSessions', JSON.stringify(updatedSessions));
-      } catch (saveError) {
-        console.error('Error saving chat session:', saveError);
-      }
-    } finally {
-      const endTime = Date.now();
-      const totalTime = endTime - startTime;
-      setProcessingTime(totalTime);
-      setIsLoading(false);
-      setLoadingStage('');
-      setProcessingProgress(0);
-      processingRef.current = false;
-    }
-  }, [inputValue, isLoading, userFiles, messages, currentSessionId, selectedAIProvider, searchWeb, setStateOptimized]);
-
   const exportChatSession = useCallback((sessionId: string) => {
     const session = chatSessions.find(s => s.id === sessionId);
     if (!session) return;
@@ -769,13 +568,7 @@ export default function Index() {
     await signOut();
   }, [signOut]);
 
-  // Chrome-optimized component cleanup
-  useEffect(() => {
-    return () => {
-      documentProcessor.destroy();
-      enhancedDocumentProcessor.destroy();
-    };
-  }, []);
+
 
   // Chrome-optimized message rendering with React.memo
   const renderMessage = useCallback((message: Message) => {

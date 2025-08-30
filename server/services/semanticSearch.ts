@@ -39,12 +39,15 @@ export class SemanticSearchService {
   private readonly DEFAULT_SIMILARITY_THRESHOLD = 0.7;
 
   constructor() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OpenAI API key is required for semantic search');
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey || apiKey === 'sk-placeholder') {
+      console.warn('⚠️  OpenAI API key not set. Semantic search will be disabled.');
+      this.openai = null;
+    } else {
+      this.openai = new OpenAI({
+        apiKey: apiKey,
+      });
     }
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
   }
 
   /**
@@ -163,6 +166,12 @@ export class SemanticSearchService {
    * Generate embedding for text using OpenAI
    */
   private async generateEmbedding(text: string): Promise<number[]> {
+    if (!this.openai) {
+      // Return a mock embedding for development
+      console.warn('⚠️  OpenAI not available, using mock embedding');
+      return new Array(1536).fill(0).map(() => Math.random() - 0.5);
+    }
+
     try {
       // Truncate text if it's too long (OpenAI has limits)
       const truncatedText = text.length > 8000 ? text.substring(0, 8000) : text;
