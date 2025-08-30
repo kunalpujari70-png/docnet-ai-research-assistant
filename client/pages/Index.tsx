@@ -483,6 +483,23 @@ export default function Index() {
           summary: file.summary || ''
         }));
 
+      console.log(`Preparing chat request with ${documentContext.length} processed documents`);
+      documentContext.forEach((doc, index) => {
+        console.log(`Document ${index + 1}: ${doc.name} - Content length: ${doc.content.length}, Summary length: ${doc.summary.length}`);
+      });
+
+      // Validate that we have actual content
+      const validDocuments = documentContext.filter(doc => 
+        doc.content && doc.content.trim().length > 10 && 
+        doc.summary && doc.summary.trim().length > 0
+      );
+
+      if (validDocuments.length !== documentContext.length) {
+        console.warn(`Filtered out ${documentContext.length - validDocuments.length} documents with insufficient content`);
+      }
+
+      console.log(`Using ${validDocuments.length} valid documents for AI query`);
+
       // Prepare chat history for context
       const chatHistory = messages.map(msg => ({
         role: msg.role,
@@ -490,7 +507,7 @@ export default function Index() {
       }));
 
       // Use backend document processing to prevent frontend unresponsiveness
-      let relevantDocuments = documentContext;
+      let relevantDocuments = validDocuments;
       
       if (documentContext.length > 0) {
         setStateOptimized(setLoadingStage, 'Analyzing documents...');

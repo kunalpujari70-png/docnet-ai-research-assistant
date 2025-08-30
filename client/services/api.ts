@@ -300,6 +300,22 @@ export class APIService {
     }
   }
 
+  async getProcessedDocuments(): Promise<Array<{
+    id: number;
+    name: string;
+    content: string;
+    summary: string;
+    fileType: string;
+    uploadDate: string;
+  }>> {
+    try {
+      return await this.productionService.getProcessedDocuments();
+    } catch (error) {
+      console.warn('Production processed documents fetch failed:', error);
+      return [];
+    }
+  }
+
   async deleteDocument(fileId: string): Promise<boolean> {
     try {
       return await this.productionService.deleteDocument(fileId);
