@@ -349,6 +349,3 @@ export class APIService {
 
 // Export singleton instance
 export const apiService = new APIService();
-
-// Export types for use in components
-export type { ChatRequest, ChatResponse, FileUploadResponse, DocumentMetadata };

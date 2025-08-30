@@ -61,6 +61,11 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Export createServer function for external use
+export function createServer() {
+  return app;
+}
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
