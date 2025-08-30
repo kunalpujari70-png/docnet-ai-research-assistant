@@ -1,488 +1,494 @@
-import path from 'path';
-import fs from 'fs';
+import { createClient } from '@supabase/supabase-js';
 
-// Database file path
-const dbPath = path.join(process.cwd(), 'knowledge_base.json');
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_ANON_KEY!;
 
-interface Document {
-  id: number;
-  filename: string;
-  originalName: string;
-  filePath: string;
-  fileType: string;
-  fileSize: number;
-  uploadDate: string;
-  processed: boolean;
-  content?: string;
-  summary?: string;
-  tags?: string[];
-  category?: string;
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase environment variables');
 }
 
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
-
-interface Template {
+// Enhanced document interface with metadata and tags
+export interface Document {
   id: number;
   name: string;
-  description: string;
-  outputType: string;
-  promptTemplate: string;
-  exampleInput: string;
-  exampleOutput: string;
-  category: string;
-  isPublic: boolean;
-  createdBy: string;
-  createdAt: string;
-}
-
-interface Database {
-  documents: Document[];
-  templates: Template[];
-  nextId: number;
-  nextTemplateId: number;
-}
-
-// Initialize database
-export function initializeDatabase(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      if (!fs.existsSync(dbPath)) {
-        const initialDb: Database = {
-          documents: [],
-          templates: [],
-          nextId: 1,
-          nextTemplateId: 1
-        };
-        fs.writeFileSync(dbPath, JSON.stringify(initialDb, null, 2));
-        console.log('Database initialized successfully with default prompts and templates');
-      } else {
-        console.log('Database already exists');
-      }
-      resolve();
-    } catch (error) {
-      console.error('Error initializing database:', error);
-      reject(error);
-    }
-  });
-}
-
-// Read database
-function readDatabase(): Database {
-  try {
-    if (!fs.existsSync(dbPath)) {
-          return { 
-      documents: [], 
-      templates: [],
-      nextId: 1,
-      nextTemplateId: 1
-    };
-    }
-    const data = fs.readFileSync(dbPath, 'utf-8');
-    const parsed = JSON.parse(data);
-    
-    // Handle legacy database format
-    if (!parsed.templates) {
-      parsed.templates = [];
-    }
-    if (!parsed.nextTemplateId) {
-      parsed.nextTemplateId = 1;
-    }
-    
-    return parsed;
-  } catch (error) {
-    console.error('Error reading database:', error);
-    return { 
-      documents: [], 
-      templates: [],
-      nextId: 1,
-      nextTemplateId: 1
-    };
-  }
-}
-
-// Write database
-function writeDatabase(db: Database): void {
-  try {
-    fs.writeFileSync(dbPath, JSON.stringify(db, null, 2));
-  } catch (error) {
-    console.error('Error writing database:', error);
-  }
-}
-
-// Add a document to the database
-export function addDocument(documentInfo: {
-  filename: string;
   originalName: string;
-  filePath: string;
   fileType: string;
   fileSize: number;
-  content?: string;
-  summary?: string;
-}): Promise<number> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      
-      const document: Document = {
-        id: db.nextId++,
-        filename: documentInfo.filename,
-        originalName: documentInfo.originalName,
-        filePath: documentInfo.filePath,
-        fileType: documentInfo.fileType,
-        fileSize: documentInfo.fileSize,
-        uploadDate: new Date().toISOString(),
-        processed: !!documentInfo.content,
-        content: documentInfo.content,
-        summary: documentInfo.summary
-      };
-      
-      db.documents.push(document);
-      writeDatabase(db);
-      
-      console.log(`Document added to database with ID: ${document.id}`);
-      resolve(document.id);
-    } catch (error) {
+  content: string;
+  summary: string;
+  tags: string[];
+  metadata: {
+    totalPages?: number;
+    totalWords: number;
+    language: string;
+    hasImages: boolean;
+    hasTables: boolean;
+    processingTime: number;
+    extractedAt: Date;
+  };
+  chunks: Array<{
+    id: string;
+    content: string;
+    metadata: {
+      page?: number;
+      section?: string;
+      wordCount: number;
+      startIndex: number;
+      endIndex: number;
+    };
+  }>;
+  processed: boolean;
+  uploadDate: Date;
+  userId?: string;
+  sessionId?: string;
+}
+
+// Session management interface
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: Date;
+    documentsUsed?: string[];
+  }>;
+  documentIds: string[];
+  createdAt: Date;
+  lastUpdated: Date;
+  userId?: string;
+}
+
+// Enhanced document content interface
+export interface DocumentContent {
+  id: number;
+  documentId: number;
+  content: string;
+  summary: string;
+  chunks: string; // JSON string of chunks
+  metadata: string; // JSON string of metadata
+  tags: string[]; // Array of tags
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Add a new document to the database
+ */
+export async function addDocument(document: Omit<Document, 'id'>): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .insert({
+        name: document.name,
+        original_name: document.originalName,
+        file_type: document.fileType,
+        file_size: document.fileSize,
+        content: document.content,
+        summary: document.summary,
+        tags: document.tags,
+        metadata: document.metadata,
+        chunks: document.chunks,
+        processed: document.processed,
+        upload_date: document.uploadDate.toISOString(),
+        user_id: document.userId,
+        session_id: document.sessionId
+      })
+      .select('id')
+      .single();
+
+    if (error) {
       console.error('Error adding document:', error);
-      reject(error);
+      throw new Error(`Failed to add document: ${error.message}`);
     }
-  });
+
+    console.log(`Document added with ID: ${data.id}`);
+    return data.id;
+  } catch (error) {
+    console.error('Database error adding document:', error);
+    throw error;
+  }
 }
 
-// Search documents by content
-export function searchDocuments(query: string): Promise<Array<{
-  id: number;
-  originalName: string;
-  content: string;
-  summary: string;
-  uploadDate: string;
-}>> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const queryLower = query.toLowerCase();
-      
-      // Extract key terms from the query (remove common words)
-      const commonWords = ['what', 'is', 'are', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
-      const queryTerms = queryLower
-        .split(/\s+/)
-        .filter(term => term.length > 2 && !commonWords.includes(term));
-      
-      console.log('Search terms:', queryTerms);
-      
-      const results = db.documents
-        .filter(doc => doc.processed && doc.content)
-        .filter(doc => {
-          const contentLower = doc.content!.toLowerCase();
-          const summaryLower = doc.summary?.toLowerCase() || '';
-          const nameLower = doc.originalName.toLowerCase();
-          
-          // Check if any of the query terms are found in the document
-          return queryTerms.some(term => 
-            contentLower.includes(term) ||
-            summaryLower.includes(term) ||
-            nameLower.includes(term)
-          ) || contentLower.includes(queryLower); // Also check the full query
-        })
-        .map(doc => ({
-          id: doc.id,
-          originalName: doc.originalName,
-          content: doc.content!,
-          summary: doc.summary || '',
-          uploadDate: doc.uploadDate
-        }))
-        .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime())
-        .slice(0, 10);
-      
-      console.log(`Found ${results.length} documents matching terms:`, queryTerms);
-      resolve(results);
-    } catch (error) {
-      console.error('Error searching documents:', error);
-      reject(error);
+/**
+ * Get all documents with full content and metadata
+ */
+export async function getAllDocuments(): Promise<Document[]> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .order('upload_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching documents:', error);
+      throw new Error(`Failed to fetch documents: ${error.message}`);
     }
-  });
+
+    return data.map(row => ({
+      id: row.id,
+      name: row.name,
+      originalName: row.original_name,
+      fileType: row.file_type,
+      fileSize: row.file_size,
+      content: row.content,
+      summary: row.summary,
+      tags: row.tags || [],
+      metadata: row.metadata,
+      chunks: row.chunks || [],
+      processed: row.processed,
+      uploadDate: new Date(row.upload_date),
+      userId: row.user_id,
+      sessionId: row.session_id
+    }));
+  } catch (error) {
+    console.error('Database error fetching documents:', error);
+    throw error;
+  }
 }
 
-// Get all documents with full details (for processing)
-export function getAllDocumentsForProcessing(): Promise<Array<{
-  id: number;
-  filename: string;
-  originalName: string;
-  filePath: string;
-  fileType: string;
-  fileSize: number;
-  uploadDate: string;
-  processed: boolean;
-}>> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const documents = db.documents
-        .map(doc => ({
-          id: doc.id,
-          filename: doc.filename,
-          originalName: doc.originalName,
-          filePath: doc.filePath,
-          fileType: doc.fileType,
-          fileSize: doc.fileSize,
-          uploadDate: doc.uploadDate,
-          processed: doc.processed
-        }))
-        .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-      
-      resolve(documents);
-    } catch (error) {
-      console.error('Error getting documents for processing:', error);
-      reject(error);
+/**
+ * Get documents for a specific session
+ */
+export async function getDocumentsForSession(sessionId: string): Promise<Document[]> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('upload_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching session documents:', error);
+      throw new Error(`Failed to fetch session documents: ${error.message}`);
     }
-  });
+
+    return data.map(row => ({
+      id: row.id,
+      name: row.name,
+      originalName: row.original_name,
+      fileType: row.file_type,
+      fileSize: row.file_size,
+      content: row.content,
+      summary: row.summary,
+      tags: row.tags || [],
+      metadata: row.metadata,
+      chunks: row.chunks || [],
+      processed: row.processed,
+      uploadDate: new Date(row.upload_date),
+      userId: row.user_id,
+      sessionId: row.session_id
+    }));
+  } catch (error) {
+    console.error('Database error fetching session documents:', error);
+    throw error;
+  }
 }
 
-// Get document by ID with full content
-export function getDocumentById(id: number): Promise<{
-  id: number;
-  originalName: string;
-  content: string;
-  summary: string;
-  uploadDate: string;
-} | null> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const document = db.documents.find(doc => doc.id === id);
-      
-      if (document && document.processed && document.content) {
-        resolve({
-          id: document.id,
-          originalName: document.originalName,
-          content: document.content,
-          summary: document.summary || '',
-          uploadDate: document.uploadDate
-        });
-      } else {
-        resolve(null);
-      }
-    } catch (error) {
-      console.error('Error getting document by ID:', error);
-      reject(error);
+/**
+ * Get documents by tags
+ */
+export async function getDocumentsByTags(tags: string[]): Promise<Document[]> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .overlaps('tags', tags)
+      .order('upload_date', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching documents by tags:', error);
+      throw new Error(`Failed to fetch documents by tags: ${error.message}`);
     }
-  });
+
+    return data.map(row => ({
+      id: row.id,
+      name: row.name,
+      originalName: row.original_name,
+      fileType: row.file_type,
+      fileSize: row.file_size,
+      content: row.content,
+      summary: row.summary,
+      tags: row.tags || [],
+      metadata: row.metadata,
+      chunks: row.chunks || [],
+      processed: row.processed,
+      uploadDate: new Date(row.upload_date),
+      userId: row.user_id,
+      sessionId: row.session_id
+    }));
+  } catch (error) {
+    console.error('Database error fetching documents by tags:', error);
+    throw error;
+  }
 }
 
-// Get all documents (summary view)
-export function getAllDocuments(): Promise<Array<{
-  id: number;
-  originalName: string;
-  fileType: string;
-  fileSize: number;
-  uploadDate: string;
-  processed: boolean;
-}>> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const documents = db.documents
-        .map(doc => ({
-          id: doc.id,
-          originalName: doc.originalName,
-          fileType: doc.fileType,
-          fileSize: doc.fileSize,
-          uploadDate: doc.uploadDate,
-          processed: doc.processed
-        }))
-        .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-      
-      resolve(documents);
-    } catch (error) {
-      console.error('Error getting documents:', error);
-      reject(error);
-    }
-  });
-}
+/**
+ * Update document content and metadata
+ */
+export async function updateDocumentContent(
+  documentId: number, 
+  content: string, 
+  summary: string, 
+  chunks: any[], 
+  metadata: any, 
+  tags: string[]
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('documents')
+      .update({
+        content,
+        summary,
+        chunks,
+        metadata,
+        tags,
+        processed: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', documentId);
 
-// Get document content by ID
-export function getDocumentContent(documentId: number): Promise<{
-  content: string;
-  summary: string;
-  originalName: string;
-} | null> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const document = db.documents.find(doc => doc.id === documentId && doc.processed);
-      
-      if (document && document.content) {
-        resolve({
-          content: document.content,
-          summary: document.summary || '',
-          originalName: document.originalName
-        });
-      } else {
-        resolve(null);
-      }
-    } catch (error) {
-      console.error('Error getting document content:', error);
-      reject(error);
-    }
-  });
-}
-
-// Update document content (for when we process PDFs)
-export function updateDocumentContent(documentId: number, content: string, summary?: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const document = db.documents.find(doc => doc.id === documentId);
-      
-      if (document) {
-        document.content = content;
-        document.summary = summary;
-        document.processed = true;
-        writeDatabase(db);
-        console.log(`Document ${documentId} updated successfully`);
-      }
-      
-      resolve();
-    } catch (error) {
+    if (error) {
       console.error('Error updating document content:', error);
-      reject(error);
+      throw new Error(`Failed to update document content: ${error.message}`);
     }
-  });
+
+    console.log(`Document ${documentId} content updated successfully`);
+  } catch (error) {
+    console.error('Database error updating document content:', error);
+    throw error;
+  }
 }
 
+/**
+ * Get document content by ID
+ */
+export async function getDocumentContent(documentId: number): Promise<DocumentContent | null> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('id', documentId)
+      .single();
 
-
-// Template Functions
-export function getAllTemplates(): Promise<Template[]> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      resolve(db.templates.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-    } catch (error) {
-      console.error('Error getting templates:', error);
-      reject(error);
-    }
-  });
-}
-
-export function getTemplateById(id: number): Promise<Template | null> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const template = db.templates.find(t => t.id === id);
-      resolve(template || null);
-    } catch (error) {
-      console.error('Error getting template:', error);
-      reject(error);
-    }
-  });
-}
-
-export function createTemplate(template: Omit<Template, 'id' | 'createdAt'>): Promise<number> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const newTemplate: Template = {
-        ...template,
-        id: db.nextTemplateId++,
-        createdAt: new Date().toISOString()
-      };
-      
-      db.templates.push(newTemplate);
-      writeDatabase(db);
-      resolve(newTemplate.id);
-    } catch (error) {
-      console.error('Error creating template:', error);
-      reject(error);
-    }
-  });
-}
-
-// Enhanced Document Functions
-export function addDocumentTags(documentId: number, tags: string[], category?: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const document = db.documents.find(doc => doc.id === documentId);
-      
-      if (document) {
-        document.tags = tags;
-        if (category) document.category = category;
-        writeDatabase(db);
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // Document not found
       }
-      
-      resolve();
-    } catch (error) {
-      console.error('Error adding document tags:', error);
-      reject(error);
+      console.error('Error fetching document content:', error);
+      throw new Error(`Failed to fetch document content: ${error.message}`);
     }
-  });
+
+    return {
+      id: data.id,
+      documentId: data.id,
+      content: data.content,
+      summary: data.summary,
+      chunks: JSON.stringify(data.chunks || []),
+      metadata: JSON.stringify(data.metadata || {}),
+      tags: data.tags || [],
+      createdAt: new Date(data.created_at),
+      updatedAt: new Date(data.updated_at)
+    };
+  } catch (error) {
+    console.error('Database error fetching document content:', error);
+    throw error;
+  }
 }
 
-export function searchDocumentsByTags(tags: string[]): Promise<Array<{
-  id: number;
-  originalName: string;
-  content: string;
-  summary: string;
-  uploadDate: string;
-  tags?: string[];
-  category?: string;
-}>> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const tagSet = new Set(tags.map(t => t.toLowerCase()));
-      
-      const results = db.documents
-        .filter(doc => doc.processed && doc.content && doc.tags)
-        .filter(doc => doc.tags!.some(tag => tagSet.has(tag.toLowerCase())))
-        .map(doc => ({
-          id: doc.id,
-          originalName: doc.originalName,
-          content: doc.content!,
-          summary: doc.summary || '',
-          uploadDate: doc.uploadDate,
-          tags: doc.tags,
-          category: doc.category
-        }))
-        .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-      
-      resolve(results);
-    } catch (error) {
-      console.error('Error searching documents by tags:', error);
-      reject(error);
+/**
+ * Delete document by ID
+ */
+export async function deleteDocument(documentId: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('documents')
+      .delete()
+      .eq('id', documentId);
+
+    if (error) {
+      console.error('Error deleting document:', error);
+      throw new Error(`Failed to delete document: ${error.message}`);
     }
-  });
+
+    console.log(`Document ${documentId} deleted successfully`);
+  } catch (error) {
+    console.error('Database error deleting document:', error);
+    throw error;
+  }
 }
 
-export function getDocumentsByCategory(category: string): Promise<Array<{
-  id: number;
-  originalName: string;
-  content: string;
-  summary: string;
-  uploadDate: string;
-  tags?: string[];
-  category?: string;
-}>> {
-  return new Promise((resolve, reject) => {
-    try {
-      const db = readDatabase();
-      const results = db.documents
-        .filter(doc => doc.processed && doc.content && doc.category === category)
-        .map(doc => ({
-          id: doc.id,
-          originalName: doc.originalName,
-          content: doc.content!,
-          summary: doc.summary || '',
-          uploadDate: doc.uploadDate,
-          tags: doc.tags,
-          category: doc.category
-        }))
-        .sort((a, b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-      
-      resolve(results);
-    } catch (error) {
-      console.error('Error getting documents by category:', error);
-      reject(error);
+/**
+ * Search documents by content (full-text search)
+ */
+export async function searchDocuments(query: string): Promise<Document[]> {
+  try {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .textSearch('content', query)
+      .order('upload_date', { ascending: false });
+
+    if (error) {
+      console.error('Error searching documents:', error);
+      throw new Error(`Failed to search documents: ${error.message}`);
     }
-  });
+
+    return data.map(row => ({
+      id: row.id,
+      name: row.name,
+      originalName: row.original_name,
+      fileType: row.file_type,
+      fileSize: row.file_size,
+      content: row.content,
+      summary: row.summary,
+      tags: row.tags || [],
+      metadata: row.metadata,
+      chunks: row.chunks || [],
+      processed: row.processed,
+      uploadDate: new Date(row.upload_date),
+      userId: row.user_id,
+      sessionId: row.session_id
+    }));
+  } catch (error) {
+    console.error('Database error searching documents:', error);
+    throw error;
+  }
+}
+
+/**
+ * Save chat session
+ */
+export async function saveChatSession(session: ChatSession): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('chat_sessions')
+      .upsert({
+        id: session.id,
+        title: session.title,
+        messages: session.messages,
+        document_ids: session.documentIds,
+        created_at: session.createdAt.toISOString(),
+        last_updated: session.lastUpdated.toISOString(),
+        user_id: session.userId
+      });
+
+    if (error) {
+      console.error('Error saving chat session:', error);
+      throw new Error(`Failed to save chat session: ${error.message}`);
+    }
+
+    console.log(`Chat session ${session.id} saved successfully`);
+  } catch (error) {
+    console.error('Database error saving chat session:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get chat sessions for a user
+ */
+export async function getChatSessions(userId?: string): Promise<ChatSession[]> {
+  try {
+    let query = supabase
+      .from('chat_sessions')
+      .select('*')
+      .order('last_updated', { ascending: false });
+
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching chat sessions:', error);
+      throw new Error(`Failed to fetch chat sessions: ${error.message}`);
+    }
+
+    return data.map(row => ({
+      id: row.id,
+      title: row.title,
+      messages: row.messages || [],
+      documentIds: row.document_ids || [],
+      createdAt: new Date(row.created_at),
+      lastUpdated: new Date(row.last_updated),
+      userId: row.user_id
+    }));
+  } catch (error) {
+    console.error('Database error fetching chat sessions:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete chat session
+ */
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('chat_sessions')
+      .delete()
+      .eq('id', sessionId);
+
+    if (error) {
+      console.error('Error deleting chat session:', error);
+      throw new Error(`Failed to delete chat session: ${error.message}`);
+    }
+
+    console.log(`Chat session ${sessionId} deleted successfully`);
+  } catch (error) {
+    console.error('Database error deleting chat session:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get database statistics
+ */
+export async function getDatabaseStats(): Promise<{
+  totalDocuments: number;
+  totalSessions: number;
+  totalContent: number;
+  averageDocumentSize: number;
+}> {
+  try {
+    const { data: documents, error: docError } = await supabase
+      .from('documents')
+      .select('id, file_size, content');
+
+    const { data: sessions, error: sessionError } = await supabase
+      .from('chat_sessions')
+      .select('id');
+
+    if (docError || sessionError) {
+      throw new Error(`Failed to get database stats: ${docError?.message || sessionError?.message}`);
+    }
+
+    const totalContent = documents.reduce((sum, doc) => sum + (doc.content?.length || 0), 0);
+    const averageDocumentSize = documents.length > 0 ? totalContent / documents.length : 0;
+
+    return {
+      totalDocuments: documents.length,
+      totalSessions: sessions.length,
+      totalContent,
+      averageDocumentSize
+    };
+  } catch (error) {
+    console.error('Database error getting stats:', error);
+    throw error;
+  }
+}
+
+// Legacy functions for backward compatibility
+export async function getAllDocumentsForProcessing(): Promise<any[]> {
+  return getAllDocuments();
+}
+
+export async function updateDocumentContent_legacy(documentId: number, content: string, summary: string): Promise<void> {
+  return updateDocumentContent(documentId, content, summary, [], {}, []);
 }

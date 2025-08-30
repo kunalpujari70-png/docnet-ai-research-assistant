@@ -2,9 +2,9 @@ import { RequestHandler } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { spawnSync } from "child_process";
-import { addDocument, getAllDocumentsForProcessing, updateDocumentContent, getAllDocuments, getDocumentContent } from "../database";
-import { DocumentExtractor, ExtractedDocument } from "../services/documentExtractor";
+import { addDocument, getAllDocuments, updateDocumentContent } from "../database";
+import { DocumentProcessor, ProcessedDocument } from "../services/documentProcessor";
+import { semanticSearchService } from "../services/semanticSearch";
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -22,18 +22,20 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ 
-  storage: storage,
+  storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+    files: 5 // Max 5 files at once
+  },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['.pdf', '.txt', '.doc', '.docx'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedTypes.includes(ext)) {
+    const allowedTypes = ['.pdf', '.docx', '.doc', '.txt'];
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedTypes.includes(fileExtension)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF, TXT, DOC, DOCX files are allowed.'));
+      cb(new Error(`Unsupported file type: ${fileExtension}`));
     }
-  },
-  limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB limit for large PDFs
   }
 });
 
@@ -47,11 +49,8 @@ interface FileUploadResponse {
     summary: string;
     success: boolean;
     error?: string;
-    metadata?: {
-      pages?: number;
-      wordCount?: number;
-      language?: string;
-    };
+    metadata?: any;
+    tags?: string[];
   }>;
   error?: string;
 }
@@ -81,87 +80,106 @@ export const handleFileUpload: RequestHandler = async (req, res) => {
         summary: string;
         success: boolean;
         error?: string;
-        metadata?: {
-          pages?: number;
-          wordCount?: number;
-          language?: string;
-        };
+        metadata?: any;
+        tags?: string[];
       }> = [];
 
-      // Process each file and add to database with content extraction
+      console.log(`Processing ${files.length} uploaded files`);
+
       for (const file of files) {
         try {
-          console.log(`Processing file: ${file.originalname} (${file.size} bytes)`);
+          console.log(`Processing file: ${file.originalname}`);
           
-          // Extract content using the new DocumentExtractor
-          const extractedDoc: ExtractedDocument = await DocumentExtractor.extractContent(file.path, file.originalname);
-          
-          // Validate the extracted content
-          const validation = DocumentExtractor.validateContent(extractedDoc.content);
-          if (!validation.isValid) {
-            extractedDoc.success = false;
-            extractedDoc.error = validation.error || 'Content validation failed';
+          // Process document with enhanced extraction
+          const processedDocument = await DocumentProcessor.processDocument(
+            file.path,
+            file.originalname,
+            {
+              enableOCR: true, // Enable OCR for PDFs
+              chunkSize: 1000, // 1000 words per chunk
+              overlapSize: 100, // 100 words overlap
+              maxTokens: 4000 // 4000 tokens max per chunk
+            }
+          );
+
+          // Store in database
+          const documentId = await addDocument({
+            name: processedDocument.name,
+            originalName: file.originalname,
+            fileType: processedDocument.metadata.fileType,
+            fileSize: file.size,
+            content: processedDocument.content,
+            summary: processedDocument.summary,
+            tags: processedDocument.tags,
+            metadata: processedDocument.metadata,
+            chunks: processedDocument.chunks,
+            processed: true,
+            uploadDate: new Date(),
+            userId: req.body.userId,
+            sessionId: req.body.sessionId
+          });
+
+          // Index for semantic search
+          try {
+            await semanticSearchService.indexDocument(processedDocument);
+            console.log(`Document ${file.originalname} indexed for semantic search`);
+          } catch (searchError) {
+            console.warn(`Failed to index document for semantic search: ${searchError}`);
+            // Continue processing even if indexing fails
           }
 
-          // Add document to database with extracted content
-          const documentId = await addDocument({
-            filename: file.filename,
-            originalName: file.originalname,
-            filePath: file.path,
-            fileType: path.extname(file.originalname).toLowerCase(),
-            fileSize: file.size,
-            content: extractedDoc.content,
-            summary: extractedDoc.summary
-          });
-          
-          uploadedFiles.push(file.originalname);
+          uploadedFiles.push(file.filename);
           processedFiles.push({
             name: file.originalname,
-            content: extractedDoc.content,
-            summary: extractedDoc.summary,
-            success: extractedDoc.success,
-            error: extractedDoc.error,
-            metadata: extractedDoc.metadata
+            content: processedDocument.content,
+            summary: processedDocument.summary,
+            success: true,
+            metadata: processedDocument.metadata,
+            tags: processedDocument.tags
           });
+
+          console.log(`Successfully processed ${file.originalname}: ${processedDocument.metadata.totalWords} words, ${processedDocument.chunks.length} chunks`);
+
+        } catch (error) {
+          console.error(`Error processing file ${file.originalname}:`, error);
           
-          if (extractedDoc.success) {
-            console.log(`✅ Successfully processed ${file.originalname}:`);
-            console.log(`   - Content length: ${extractedDoc.content.length} characters`);
-            console.log(`   - Word count: ${extractedDoc.metadata?.wordCount || 'unknown'}`);
-            console.log(`   - Pages: ${extractedDoc.metadata?.pages || 'unknown'}`);
-            console.log(`   - Language: ${extractedDoc.metadata?.language || 'unknown'}`);
-            console.log(`   - Database ID: ${documentId}`);
-          } else {
-            console.error(`❌ Failed to process ${file.originalname}: ${extractedDoc.error}`);
-          }
-          
-        } catch (dbError) {
-          console.error(`Error adding file ${file.originalname} to database:`, dbError);
           processedFiles.push({
             name: file.originalname,
-            content: "",
-            summary: "",
+            content: '',
+            summary: '',
             success: false,
-            error: `Database error: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`
+            error: error instanceof Error ? error.message : 'Unknown error'
           });
         }
       }
-      
+
+      // Clean up uploaded files
+      files.forEach(file => {
+        try {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (cleanupError) {
+          console.warn(`Failed to cleanup file ${file.path}:`, cleanupError);
+        }
+      });
+
       const successCount = processedFiles.filter(f => f.success).length;
-      const totalCount = processedFiles.length;
-      
+      console.log(`File upload completed: ${successCount}/${files.length} files processed successfully`);
+
       res.json({
         success: true,
-        message: `Processed ${successCount}/${totalCount} files successfully`,
+        message: `Successfully processed ${successCount} out of ${files.length} files`,
         files: uploadedFiles,
-        processedFiles: processedFiles
+        processedFiles
       } as FileUploadResponse);
+
     });
   } catch (error) {
-    console.error("File upload error:", error);
+    console.error('File upload error:', error);
     res.status(500).json({
       success: false,
-      error: "Internal server error"
+      error: error instanceof Error ? error.message : 'Unknown error'
     } as FileUploadResponse);
   }
 };
@@ -169,88 +187,29 @@ export const handleFileUpload: RequestHandler = async (req, res) => {
 export const getUploadedFiles: RequestHandler = async (req, res) => {
   try {
     const documents = await getAllDocuments();
-    res.json({ files: documents });
-  } catch (error) {
-    console.error("Error getting uploaded files:", error);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
+    
+    const fileList = documents.map(doc => ({
+      id: doc.id,
+      name: doc.name,
+      originalName: doc.originalName,
+      fileType: doc.fileType,
+      fileSize: doc.fileSize,
+      processed: doc.processed,
+      uploadDate: doc.uploadDate,
+      tags: doc.tags,
+      metadata: doc.metadata
+    }));
 
-// Process uploaded documents (extract text, generate summaries)
-export const handleProcessDocuments: RequestHandler = async (req, res) => {
-  try {
-    const documents = await getAllDocumentsForProcessing();
-    const unprocessedDocs = documents.filter(doc => !doc.processed);
-    
-    if (unprocessedDocs.length === 0) {
-      return res.json({ 
-        success: true, 
-        message: "All documents are already processed" 
-      });
-    }
-
-    let processedCount = 0;
-    
-    for (const doc of unprocessedDocs) {
-      try {
-        // Extract text from the actual file
-        const filePath = doc.filePath; // Use the full file path from database
-        
-        if (fs.existsSync(filePath)) {
-          let content = "";
-          let summary = "";
-          
-          if (doc.fileType === '.txt') {
-            content = fs.readFileSync(filePath, 'utf-8');
-            summary = content.substring(0, 200) + "...";
-          } else if (doc.fileType === '.pdf') {
-            try {
-              // Use a separate CJS helper with pdf-parse to avoid bundler import issues
-              const extractorPath = path.join(process.cwd(), 'server', 'utils', 'extract-pdf.cjs');
-              const result = spawnSync(process.execPath, [extractorPath, filePath], { encoding: 'utf-8' });
-              if (result.status === 0) {
-                const parsed = JSON.parse(result.stdout || '{}');
-                content = parsed.text || '';
-                const firstLines = content.split('\n').slice(0, 10).join(' ').trim();
-                summary = firstLines.substring(0, 300) + "...";
-                console.log(`Extracted ${content.length} characters from PDF: ${doc.originalName}`);
-              } else {
-                console.error(`PDF extractor failed (status ${result.status}):`, result.stderr);
-                content = `PDF document: ${doc.originalName} - Text extraction failed.`;
-                summary = `PDF document: ${doc.originalName} - Text extraction failed`;
-              }
-            } catch (pdfError) {
-              console.error(`Error extracting PDF content from ${doc.originalName}:`, pdfError);
-              content = `PDF document: ${doc.originalName} - Text extraction failed.`;
-              summary = `PDF document: ${doc.originalName} - Text extraction failed`;
-            }
-          } else if (doc.fileType === '.docx' || doc.fileType === '.doc') {
-            content = `Document content from ${doc.originalName} - Word document processing not yet implemented`;
-            summary = `Document: ${doc.originalName} - Word document`;
-          } else {
-            content = `Document content from ${doc.originalName}`;
-            summary = `Document: ${doc.originalName}`;
-          }
-          
-          await updateDocumentContent(doc.id, content, summary);
-          processedCount++;
-          console.log(`Successfully processed document: ${doc.originalName}`);
-        } else {
-          console.error(`File not found: ${filePath}`);
-        }
-      } catch (error) {
-        console.error(`Error processing document ${doc.originalName}:`, error);
-      }
-    }
-    
     res.json({
       success: true,
-      message: `Processed ${processedCount} documents`,
-      processedCount
+      files: fileList
     });
   } catch (error) {
-    console.error("Error processing documents:", error);
-    res.status(500).json({ error: "Internal server error" });
+    console.error('Error fetching uploaded files:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 };
 
@@ -262,17 +221,17 @@ export const getProcessedDocuments: RequestHandler = async (req, res) => {
     
     for (const doc of documents) {
       if (doc.processed) {
-        const content = await getDocumentContent(doc.id);
-        if (content) {
-          processedDocs.push({
-            id: doc.id,
-            name: doc.originalName,
-            content: content.content,
-            summary: content.summary,
-            fileType: doc.fileType,
-            uploadDate: doc.uploadDate
-          });
-        }
+        processedDocs.push({
+          id: doc.id,
+          name: doc.name,
+          content: doc.content,
+          summary: doc.summary,
+          fileType: doc.fileType,
+          uploadDate: doc.uploadDate,
+          tags: doc.tags,
+          metadata: doc.metadata,
+          chunks: doc.chunks
+        });
       }
     }
     
@@ -281,10 +240,101 @@ export const getProcessedDocuments: RequestHandler = async (req, res) => {
       documents: processedDocs
     });
   } catch (error) {
-    console.error("Error getting processed documents:", error);
-    res.status(500).json({ 
+    console.error('Error fetching processed documents:', error);
+    res.status(500).json({
       success: false,
-      error: "Internal server error" 
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// Process existing documents (for documents uploaded before the new system)
+export const handleProcessDocuments: RequestHandler = async (req, res) => {
+  try {
+    const documents = await getAllDocuments();
+    const unprocessedDocs = documents.filter(doc => !doc.processed);
+    
+    console.log(`Processing ${unprocessedDocs.length} unprocessed documents`);
+
+    const results = [];
+
+    for (const doc of unprocessedDocs) {
+      try {
+        // Find the file in uploads directory
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        const files = fs.readdirSync(uploadDir);
+        const matchingFile = files.find(file => file.includes(doc.originalName));
+
+        if (matchingFile) {
+          const filePath = path.join(uploadDir, matchingFile);
+          
+          // Process the document
+          const processedDocument = await DocumentProcessor.processDocument(
+            filePath,
+            doc.originalName,
+            {
+              enableOCR: true,
+              chunkSize: 1000,
+              overlapSize: 100,
+              maxTokens: 4000
+            }
+          );
+
+          // Update database
+          await updateDocumentContent(
+            doc.id,
+            processedDocument.content,
+            processedDocument.summary,
+            processedDocument.chunks,
+            processedDocument.metadata,
+            processedDocument.tags
+          );
+
+          // Index for semantic search
+          try {
+            await semanticSearchService.indexDocument(processedDocument);
+          } catch (searchError) {
+            console.warn(`Failed to index document for semantic search: ${searchError}`);
+          }
+
+          results.push({
+            id: doc.id,
+            name: doc.originalName,
+            success: true,
+            message: 'Document processed successfully'
+          });
+
+          console.log(`Processed document: ${doc.originalName}`);
+        } else {
+          results.push({
+            id: doc.id,
+            name: doc.originalName,
+            success: false,
+            error: 'Original file not found'
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing document ${doc.originalName}:`, error);
+        results.push({
+          id: doc.id,
+          name: doc.originalName,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Processed ${results.filter(r => r.success).length} out of ${unprocessedDocs.length} documents`,
+      results
+    });
+
+  } catch (error) {
+    console.error('Error processing documents:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };
