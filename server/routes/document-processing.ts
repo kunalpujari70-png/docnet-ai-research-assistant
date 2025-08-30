@@ -3,7 +3,8 @@
 // This prevents frontend unresponsiveness by moving heavy operations to the backend
 
 import { RequestHandler } from "express";
-import { backendDocumentProcessor } from "../services/documentProcessor";
+import { getAllDocuments, updateDocumentContent } from "../database";
+import { DocumentProcessor } from "../services/documentProcessor";
 import path from "path";
 import fs from "fs";
 
@@ -29,7 +30,7 @@ export const processDocument: RequestHandler = async (req, res) => {
 
     console.log(`Processing document: ${documentName} (${documentId})`);
 
-    const documentIndex = await backendDocumentProcessor.processDocument(filePath, documentId, documentName);
+    const documentIndex = await DocumentProcessor.processDocument(filePath, documentId, documentName);
 
     res.json({
       success: true,
@@ -65,7 +66,7 @@ export const searchDocuments: RequestHandler = async (req, res) => {
 
     console.log(`Searching documents for: "${query}"`);
 
-    const searchResults = await backendDocumentProcessor.searchDocuments(query, documentIds);
+    const searchResults = await DocumentProcessor.searchDocuments(query, documentIds);
 
     // Format results for frontend
     const formattedResults = searchResults.map(result => ({
@@ -109,7 +110,7 @@ export const getDocumentStats: RequestHandler = async (req, res) => {
       });
     }
 
-    const stats = backendDocumentProcessor.getDocumentStats(documentId);
+    const stats = DocumentProcessor.getDocumentStats(documentId);
 
     if (!stats) {
       return res.status(404).json({
@@ -135,7 +136,7 @@ export const getDocumentStats: RequestHandler = async (req, res) => {
 // Get memory usage statistics
 export const getMemoryStats: RequestHandler = async (req, res) => {
   try {
-    const stats = backendDocumentProcessor.getMemoryStats();
+    const stats = DocumentProcessor.getMemoryStats();
 
     res.json({
       success: true,
@@ -163,7 +164,7 @@ export const clearDocument: RequestHandler = async (req, res) => {
       });
     }
 
-    backendDocumentProcessor.clearDocument(documentId);
+    DocumentProcessor.clearDocument(documentId);
 
     res.json({
       success: true,
@@ -213,7 +214,7 @@ export const batchProcessDocuments: RequestHandler = async (req, res) => {
             throw new Error(`File not found: ${filePath}`);
           }
 
-          const documentIndex = await backendDocumentProcessor.processDocument(filePath, documentId, documentName);
+          const documentIndex = await DocumentProcessor.processDocument(filePath, documentId, documentName);
           
           return {
             documentId,

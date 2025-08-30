@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
-import { searchDocuments, getAllDocuments, getDocumentById } from "../database";
+import { getAllDocuments, getDocumentContent } from "../database";
 import { OpenAIRequest, OpenAIResponse } from "../../shared/api";
 
 const router = Router();
@@ -106,7 +106,7 @@ router.post('/chat', async (req, res) => {
 
     // Get document context with improved search
     let databaseContext = '';
-    let relevantDocuments = await searchDocuments(prompt);
+    let relevantDocuments = await getDocumentContent(prompt);
     console.log(`Search query: "${prompt}"`);
     console.log(`Found ${relevantDocuments.length} relevant documents`);
 
@@ -119,7 +119,7 @@ router.post('/chat', async (req, res) => {
       if (processedDocs.length > 0) {
         // Get full content for all processed documents
         const fullDocs = await Promise.all(processedDocs.map(async (doc) => {
-          const fullDoc = await getDocumentById(doc.id);
+          const fullDoc = await getDocumentContent(doc.id);
           return fullDoc;
         }));
         
@@ -181,7 +181,7 @@ router.post('/chat', async (req, res) => {
       if (processedDocs.length > 0) {
         console.log("Including document summaries as final fallback");
         const docSummaries = await Promise.all(processedDocs.map(async (doc) => {
-          const fullDoc = await getDocumentById(doc.id);
+          const fullDoc = await getDocumentContent(doc.id);
           if (fullDoc) {
             // Take first 2000 characters as summary
             const summary = fullDoc.content.substring(0, 2000);

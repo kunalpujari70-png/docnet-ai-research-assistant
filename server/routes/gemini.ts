@@ -1,99 +1,71 @@
 import { RequestHandler } from 'express';
-import { searchDocuments, getAllDocuments, getDocumentById } from '../database';
+import { getAllDocuments } from '../database';
 
 interface GeminiRequest {
   prompt: string;
   context?: string;
   searchWeb?: boolean;
-  templateId?: string;
-  variables?: Record<string, any>;
-  chatHistory?: Array<{ role: string; content: string }>;
+  templateId?: number;
+  variables?: Record<string, string>;
+  chatHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 interface GeminiResponse {
   response: string;
-  responseTime?: number;
+  error?: string;
   sources?: string[];
   webResults?: any[];
+  responseTime?: number;
 }
 
-export const handleGeminiChat: RequestHandler = async (req, res) => {
+export const handleGeminiRequest: RequestHandler = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
-    const { prompt, context, searchWeb = false, templateId, variables = {}, chatHistory = [] } = req.body as GeminiRequest;
-    
+    const { prompt, context, searchWeb = false, chatHistory = [] }: GeminiRequest = req.body;
+
     if (!prompt) {
-      return res.status(400).json({ error: "Prompt is required" });
+      return res.status(400).json({
+        response: '',
+        error: 'Prompt is required'
+      } as GeminiResponse);
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: "Gemini API key not configured" });
-    }
+    console.log(`Processing Gemini request: "${prompt}"`);
 
-    // Search database for relevant documents with improved search
-    let databaseContext = "";
-    let relevantDocuments: any[] = []; // Initialize to avoid undefined error
+    // Get document context
+    let databaseContext = '';
+    let relevantDocuments: any[] = [];
+    
     try {
-      relevantDocuments = await searchDocuments(prompt);
-      console.log(`Search query: "${prompt}"`);
-      console.log(`Found ${relevantDocuments.length} relevant documents`);
+      const allDocuments = await getAllDocuments();
+      const processedDocs = allDocuments.filter(doc => doc.processed);
       
-      // If no documents found with exact search, try a broader search
-      if (relevantDocuments.length === 0) {
-        console.log("No exact matches found, trying broader search...");
-        const allDocuments = await getAllDocuments();
-        const processedDocs = allDocuments.filter(doc => doc.processed);
+      if (processedDocs.length > 0) {
+        // Filter documents that contain any part of the query
+        const queryWords = prompt.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+        relevantDocuments = processedDocs.filter(doc => 
+          queryWords.some(word => 
+            doc.content.toLowerCase().includes(word) ||
+            doc.name.toLowerCase().includes(word)
+          )
+        );
         
-        if (processedDocs.length > 0) {
-          // Get full content for all processed documents
-          const fullDocs = await Promise.all(processedDocs.map(async (doc) => {
-            const fullDoc = await getDocumentById(doc.id);
-            return fullDoc;
-          }));
-          
-          // Filter documents that contain any part of the query
-          const queryWords = prompt.toLowerCase().split(/\s+/).filter(word => word.length > 2);
-          relevantDocuments = fullDocs.filter(doc => 
-            doc && queryWords.some(word => 
-              doc.content.toLowerCase().includes(word) ||
-              doc.originalName.toLowerCase().includes(word)
-            )
-          ).map(doc => ({
-            id: doc!.id,
-            originalName: doc!.originalName,
-            content: doc!.content,
-            summary: doc!.summary,
-            uploadDate: doc!.uploadDate
-          }));
-          
-          console.log(`Broad search found ${relevantDocuments.length} potentially relevant documents`);
-        }
-      }
-      
-      if (relevantDocuments.length > 0) {
-        console.log(`Document names: ${relevantDocuments.map(doc => doc.originalName).join(', ')}`);
-        databaseContext = `\n\nPRIMARY SOURCE - DOCUMENTS FROM KNOWLEDGE BASE:\n${relevantDocuments.map(doc => 
-          `=== DOCUMENT: ${doc.originalName} ===\n${doc.content}\n`
-        ).join('\n')}`;
-      } else {
-        console.log("No relevant documents found for query:", prompt);
-        // Final fallback: include all processed documents if search doesn't find specific matches
-        const allDocuments = await getAllDocuments();
-        const processedDocs = allDocuments.filter(doc => doc.processed);
-        if (processedDocs.length > 0) {
-          console.log("Including all processed documents as final fallback");
-          relevantDocuments = processedDocs; // Assign to relevantDocuments
-          const fullDocs = await Promise.all(processedDocs.map(async (doc) => {
-            const fullDoc = await getDocumentById(doc.id);
-            return fullDoc;
-          }));
-          databaseContext = `\n\nFALLBACK - ALL PROCESSED DOCUMENTS:\n${fullDocs.filter(doc => doc).map(doc => 
-            `=== DOCUMENT: ${doc!.originalName} ===\n${doc!.content}\n`
+        if (relevantDocuments.length > 0) {
+          console.log(`Found ${relevantDocuments.length} relevant documents`);
+          databaseContext = `\n\nDOCUMENTS FROM KNOWLEDGE BASE:\n${relevantDocuments.map(doc => 
+            `=== DOCUMENT: ${doc.name} ===\n${doc.content}\n`
+          ).join('\n')}`;
+        } else {
+          // Use all documents as fallback
+          console.log("No specific matches found, using all documents as fallback");
+          databaseContext = `\n\nALL AVAILABLE DOCUMENTS:\n${processedDocs.map(doc => 
+            `=== DOCUMENT: ${doc.name} ===\n${doc.content}\n`
           ).join('\n')}`;
         }
       }
     } catch (dbError) {
-      console.error("Database search error:", dbError);
+      console.error('Database error:', dbError);
     }
 
     // Get web search results if requested AND no relevant documents found
@@ -181,6 +153,14 @@ IMPORTANT: If document content is provided above, you MUST use it and acknowledg
 Please provide a comprehensive answer that addresses the user's question, prioritizing the uploaded document content.`;
 
     // Call Gemini API with enhanced configuration
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        response: '',
+        error: 'Gemini API key not configured'
+      } as GeminiResponse);
+    }
+
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
@@ -229,11 +209,11 @@ Please provide a comprehensive answer that addresses the user's question, priori
     const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini API';
 
     // Extract sources from documents used
-    const sources = relevantDocuments?.map(doc => doc.originalName) || [];
+    const sources = relevantDocuments?.map(doc => doc.name) || [];
 
     const result: GeminiResponse = {
       response: aiResponse,
-      responseTime: Date.now(),
+      responseTime: Date.now() - startTime,
       sources,
       webResults
     };
@@ -243,9 +223,9 @@ Please provide a comprehensive answer that addresses the user's question, priori
   } catch (error) {
     console.error('Gemini chat error:', error);
     res.status(500).json({ 
-      error: 'Gemini API error',
-      response: 'I apologize, but I encountered an error with the Gemini API. Please try again or switch to a different AI provider.'
-    });
+      response: '',
+      error: 'Gemini API error'
+    } as GeminiResponse);
   }
 };
 
@@ -253,6 +233,6 @@ Please provide a comprehensive answer that addresses the user's question, priori
 import express from 'express';
 const router = express.Router();
 
-router.post('/chat', handleGeminiChat);
+router.post('/chat', handleGeminiRequest);
 
 export default router;
