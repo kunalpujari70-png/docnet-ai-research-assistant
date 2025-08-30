@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 import { spawnSync } from "child_process";
 import { addDocument, getAllDocumentsForProcessing, updateDocumentContent, getAllDocuments, getDocumentContent } from "../database";
+import { DocumentExtractor, ExtractedDocument } from "../services/documentExtractor";
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -32,7 +33,7 @@ const upload = multer({
     }
   },
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 50 * 1024 * 1024 // 50MB limit for large PDFs
   }
 });
 
@@ -46,6 +47,11 @@ interface FileUploadResponse {
     summary: string;
     success: boolean;
     error?: string;
+    metadata?: {
+      pages?: number;
+      wordCount?: number;
+      language?: string;
+    };
   }>;
   error?: string;
 }
@@ -75,51 +81,26 @@ export const handleFileUpload: RequestHandler = async (req, res) => {
         summary: string;
         success: boolean;
         error?: string;
+        metadata?: {
+          pages?: number;
+          wordCount?: number;
+          language?: string;
+        };
       }> = [];
 
       // Process each file and add to database with content extraction
       for (const file of files) {
         try {
-          let content = "";
-          let summary = "";
-          let extractionSuccess = true;
-          let extractionError = "";
-
-          // Extract content based on file type
-          if (path.extname(file.originalname).toLowerCase() === '.txt') {
-            try {
-              content = fs.readFileSync(file.path, 'utf-8');
-              summary = content.substring(0, 200) + "...";
-            } catch (error) {
-              extractionSuccess = false;
-              extractionError = `Failed to read text file: ${error.message}`;
-            }
-          } else if (path.extname(file.originalname).toLowerCase() === '.pdf') {
-            try {
-              // Use a separate CJS helper with pdf-parse to avoid bundler import issues
-              const extractorPath = path.join(process.cwd(), 'server', 'utils', 'extract-pdf.cjs');
-              const result = spawnSync(process.execPath, [extractorPath, file.path], { encoding: 'utf-8' });
-              if (result.status === 0) {
-                const parsed = JSON.parse(result.stdout || '{}');
-                content = parsed.text || '';
-                const firstLines = content.split('\n').slice(0, 10).join(' ').trim();
-                summary = firstLines.substring(0, 300) + "...";
-                console.log(`Extracted ${content.length} characters from PDF: ${file.originalname}`);
-              } else {
-                extractionSuccess = false;
-                extractionError = `PDF extractor failed (status ${result.status}): ${result.stderr}`;
-              }
-            } catch (pdfError) {
-              extractionSuccess = false;
-              extractionError = `Error extracting PDF content: ${pdfError.message}`;
-            }
-          } else if (['.docx', '.doc'].includes(path.extname(file.originalname).toLowerCase())) {
-            // For now, create placeholder content for Word documents
-            content = `Document content from ${file.originalname} - Word document processing not yet implemented`;
-            summary = `Document: ${file.originalname} - Word document`;
-          } else {
-            content = `Document content from ${file.originalname}`;
-            summary = `Document: ${file.originalname}`;
+          console.log(`Processing file: ${file.originalname} (${file.size} bytes)`);
+          
+          // Extract content using the new DocumentExtractor
+          const extractedDoc: ExtractedDocument = await DocumentExtractor.extractContent(file.path, file.originalname);
+          
+          // Validate the extracted content
+          const validation = DocumentExtractor.validateContent(extractedDoc.content);
+          if (!validation.isValid) {
+            extractedDoc.success = false;
+            extractedDoc.error = validation.error || 'Content validation failed';
           }
 
           // Add document to database with extracted content
@@ -129,19 +110,31 @@ export const handleFileUpload: RequestHandler = async (req, res) => {
             filePath: file.path,
             fileType: path.extname(file.originalname).toLowerCase(),
             fileSize: file.size,
-            content: content,
-            summary: summary
+            content: extractedDoc.content,
+            summary: extractedDoc.summary
           });
           
           uploadedFiles.push(file.originalname);
           processedFiles.push({
             name: file.originalname,
-            content: content,
-            summary: summary,
-            success: extractionSuccess
+            content: extractedDoc.content,
+            summary: extractedDoc.summary,
+            success: extractedDoc.success,
+            error: extractedDoc.error,
+            metadata: extractedDoc.metadata
           });
           
-          console.log(`Document added to database with ID: ${documentId}, content length: ${content.length}`);
+          if (extractedDoc.success) {
+            console.log(`✅ Successfully processed ${file.originalname}:`);
+            console.log(`   - Content length: ${extractedDoc.content.length} characters`);
+            console.log(`   - Word count: ${extractedDoc.metadata?.wordCount || 'unknown'}`);
+            console.log(`   - Pages: ${extractedDoc.metadata?.pages || 'unknown'}`);
+            console.log(`   - Language: ${extractedDoc.metadata?.language || 'unknown'}`);
+            console.log(`   - Database ID: ${documentId}`);
+          } else {
+            console.error(`❌ Failed to process ${file.originalname}: ${extractedDoc.error}`);
+          }
+          
         } catch (dbError) {
           console.error(`Error adding file ${file.originalname} to database:`, dbError);
           processedFiles.push({
@@ -149,14 +142,17 @@ export const handleFileUpload: RequestHandler = async (req, res) => {
             content: "",
             summary: "",
             success: false,
-            error: `Database error: ${dbError.message}`
+            error: `Database error: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`
           });
         }
       }
       
+      const successCount = processedFiles.filter(f => f.success).length;
+      const totalCount = processedFiles.length;
+      
       res.json({
         success: true,
-        message: `${uploadedFiles.length} file(s) uploaded and processed successfully`,
+        message: `Processed ${successCount}/${totalCount} files successfully`,
         files: uploadedFiles,
         processedFiles: processedFiles
       } as FileUploadResponse);

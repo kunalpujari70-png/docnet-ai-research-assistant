@@ -519,34 +519,61 @@ async function handleFileUpload(event: any) {
     // Process the file content based on type
     let processedContent = '';
     let summary = '';
+    let success = true;
+    let error = '';
+    let metadata = {
+      wordCount: 0,
+      language: 'unknown'
+    };
 
-    if (fileType.includes('text/') || fileName.endsWith('.txt')) {
-      // Text files - use content directly
-      processedContent = fileContent;
-      summary = `Text document: ${fileName}`;
-    } else if (fileName.endsWith('.pdf')) {
-      // For PDFs, we'll use a simple text extraction approach
-      // In a real implementation, you'd use a PDF parsing library
-      processedContent = `PDF Document: ${fileName}\n\nContent extracted from PDF file. This is a placeholder for PDF content processing.`;
-      summary = `PDF document: ${fileName}`;
-    } else if (fileName.endsWith('.doc') || fileName.endsWith('.docx')) {
-      // For Word documents, placeholder for now
-      processedContent = `Word Document: ${fileName}\n\nContent extracted from Word document. This is a placeholder for Word document processing.`;
-      summary = `Word document: ${fileName}`;
-    } else {
-      // Default to text processing
-      processedContent = fileContent;
-      summary = `Document: ${fileName}`;
+    try {
+      if (fileType.includes('text/') || fileName.endsWith('.txt')) {
+        // Text files - use content directly
+        processedContent = fileContent;
+        summary = `Text document: ${fileName}`;
+        metadata.wordCount = processedContent.split(/\s+/).length;
+        metadata.language = detectLanguage(processedContent);
+      } else if (fileName.endsWith('.pdf')) {
+        // For PDFs, we'll use a simple text extraction approach
+        // In a real implementation, you'd use a PDF parsing library
+        processedContent = `PDF Document: ${fileName}\n\nContent extracted from PDF file. This is a placeholder for PDF content processing.\n\nNote: For full PDF text extraction, please use the development server which has access to the pdf-parse library.`;
+        summary = `PDF document: ${fileName} - Content extraction available in development mode`;
+        metadata.wordCount = processedContent.split(/\s+/).length;
+        metadata.language = detectLanguage(processedContent);
+      } else if (fileName.endsWith('.docx')) {
+        // For DOCX files, we'll provide a placeholder
+        processedContent = `DOCX Document: ${fileName}\n\nContent extracted from Word document (.docx). This is a placeholder for DOCX content processing.\n\nNote: For full DOCX text extraction, please use the development server which has access to the mammoth library.`;
+        summary = `DOCX document: ${fileName} - Content extraction available in development mode`;
+        metadata.wordCount = processedContent.split(/\s+/).length;
+        metadata.language = detectLanguage(processedContent);
+      } else if (fileName.endsWith('.doc')) {
+        // For DOC files, legacy format
+        processedContent = `Legacy Word Document: ${fileName}\n\nThis document appears to be in the legacy Microsoft Word format (.doc). For better text extraction, please convert this document to .docx format and upload again.\n\nDocument Information:\n- File: ${fileName}\n- Format: Legacy Word Document (.doc)\n- Status: Limited extraction available\n\nTo get full text extraction, please:\n1. Open this document in Microsoft Word or LibreOffice\n2. Save it as a .docx file\n3. Upload the .docx version instead`;
+        summary = `Legacy Word document: ${fileName} - Limited extraction available`;
+        metadata.wordCount = processedContent.split(/\s+/).length;
+        metadata.language = detectLanguage(processedContent);
+      } else {
+        // Default to text processing
+        processedContent = fileContent;
+        summary = `Document: ${fileName}`;
+        metadata.wordCount = processedContent.split(/\s+/).length;
+        metadata.language = detectLanguage(processedContent);
+      }
+
+      // Generate a more meaningful summary
+      if (processedContent.length > 100) {
+        summary = `${fileName} - ${processedContent.substring(0, 100)}...`;
+      } else {
+        summary = `${fileName} - ${processedContent}`;
+      }
+
+      console.log(`File uploaded: ${fileName}, Content length: ${processedContent.length}, Word count: ${metadata.wordCount}`);
+
+    } catch (processingError) {
+      success = false;
+      error = `File processing failed: ${processingError instanceof Error ? processingError.message : 'Unknown error'}`;
+      console.error('File processing error:', processingError);
     }
-
-    // Generate a more meaningful summary
-    if (processedContent.length > 100) {
-      summary = `${fileName} - ${processedContent.substring(0, 100)}...`;
-    } else {
-      summary = `${fileName} - ${processedContent}`;
-    }
-
-    console.log(`File uploaded: ${fileName}, Content length: ${processedContent.length}`);
 
     return {
       statusCode: 200,
@@ -555,11 +582,21 @@ async function handleFileUpload(event: any) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        success: true,
+        success,
         content: processedContent,
         summary: summary,
         fileName: fileName,
-        fileType: fileType
+        fileType: fileType,
+        metadata,
+        error: error || undefined,
+        processedFiles: [{
+          name: fileName,
+          content: processedContent,
+          summary: summary,
+          success,
+          error: error || undefined,
+          metadata
+        }]
       }),
     };
   } catch (error) {
@@ -570,9 +607,30 @@ async function handleFileUpload(event: any) {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ error: 'File upload failed' }),
+      body: JSON.stringify({ 
+        success: false,
+        error: 'File upload failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
     };
   }
+}
+
+// Simple language detection function
+function detectLanguage(content: string): string {
+  if (!content) return 'unknown';
+  
+  const text = content.toLowerCase();
+  
+  // Check for common English words
+  const englishWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'];
+  const englishCount = englishWords.filter(word => text.includes(word)).length;
+  
+  if (englishCount >= 5) {
+    return 'en';
+  }
+  
+  return 'unknown';
 }
 
 // Document fetching handler for Netlify function
